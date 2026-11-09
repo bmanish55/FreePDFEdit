@@ -43,7 +43,6 @@ export function validateContact(type: ContactType, value: string): { isValid: bo
       return { isValid: false, error: 'Please enter a valid email address (e.g. name@example.com).' }
     }
   } else {
-    // Mobile number: digits, optional +, spaces, dashes; minimum 10 digits
     const digitsOnly = trimmed.replace(/\D/g, '')
     if (digitsOnly.length < 10 || digitsOnly.length > 15) {
       return { isValid: false, error: 'Please enter a valid mobile number (at least 10 digits).' }
@@ -65,7 +64,6 @@ export function generateOtp(): string {
 
 /**
  * Dispatches the OTP to the user's contact.
- * In production, this calls the verification webhook / serverless function.
  */
 export async function sendOtpToUser(
   contactType: ContactType,
@@ -73,7 +71,6 @@ export async function sendOtpToUser(
   otpCode: string,
 ): Promise<{ success: boolean; message: string; simulated?: boolean }> {
   try {
-    // Attempt dispatch via /api/send-otp if available
     const res = await fetch('/api/send-otp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -84,10 +81,9 @@ export async function sendOtpToUser(
       return { success: true, message: `OTP sent successfully to your ${contactType}.` }
     }
   } catch {
-    // Network / static deployment fallback
+    // Network fallback
   }
 
-  // Client-side fallback: simulate reliable OTP delivery with demo helper
   return {
     success: true,
     message: `Verification code sent to ${contactValue}.`,
@@ -96,10 +92,10 @@ export async function sendOtpToUser(
 }
 
 /**
- * Submits the verified feedback securely.
+ * Submits verified feedback directly to your inbox via FormSubmit / serverless route.
  * The destination email is never displayed in the UI.
  */
-export async function submitFeedback(payload: FeedbackPayload): Promise<{ success: boolean; message: string }> {
+export async function submitFeedback(payload: FeedbackPayload): Promise<{ success: boolean; message: string; needsActivation?: boolean }> {
   const recipient = getRecipientEmail()
   const diagnostics = payload.diagnostics || {
     userAgent: navigator.userAgent,
@@ -110,28 +106,9 @@ export async function submitFeedback(payload: FeedbackPayload): Promise<{ succes
   }
 
   const emailSubject = `[FreePDFEdit Feedback] [${payload.category}] ${payload.title || 'User Feedback'}`
-  const emailBody = `
-Feedback Category: ${payload.category}
-Subject/Title: ${payload.title}
 
-User Contact:
-- Type: ${payload.contactType.toUpperCase()}
-- Value: ${payload.contactValue} (Verified via OTP)
-
-Description:
-${payload.description}
-
-----------------------------------------
-Diagnostics & Environment:
-- Timestamp: ${diagnostics.timestamp}
-- Platform: ${diagnostics.platform}
-- Screen: ${diagnostics.screenResolution}
-- Browser: ${diagnostics.userAgent}
-- App: FreePDFEdit (Web)
-`.trim()
-
+  // 1. Try local serverless endpoint /api/feedback if deployed on Vercel/Node
   try {
-    // Method 1: Try local serverless endpoint /api/feedback
     const apiRes = await fetch('/api/feedback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -143,43 +120,76 @@ Diagnostics & Environment:
     }).catch(() => null)
 
     if (apiRes && apiRes.ok) {
-      return { success: true, message: 'Thank you! Your feedback has been sent successfully.' }
+      const data = await apiRes.json().catch(() => ({}))
+      if (data.success) {
+        return { success: true, message: 'Thank you! Your feedback has been sent successfully.' }
+      }
     }
-
-    // Method 2: Fallback to public Web3Forms API
-    const web3formsRes = await fetch('https://api.web3forms.com/submit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        // Default Web3Forms public access token or forward to target email
-        access_key: import.meta.env?.VITE_WEB3FORMS_KEY || 'e35c2420-5cf7-4f93-b673-9a0ea6d74488',
-        to: recipient,
-        from_name: `FreePDFEdit User (${payload.contactValue})`,
-        subject: emailSubject,
-        message: emailBody,
-        category: payload.category,
-        contact: payload.contactValue,
-      }),
-    }).catch(() => null)
-
-    if (web3formsRes && web3formsRes.ok) {
-      return { success: true, message: 'Thank you! Your feedback has been sent successfully.' }
-    }
-  } catch (err) {
-    console.warn('Feedback dispatch issue:', err)
+  } catch {
+    // Fall through to FormSubmit
   }
 
-  // Method 3: Backup queue in localStorage to prevent data loss
+  // 2. Submit directly via FormSubmit AJAX service
+  try {
+    // FormSubmit endpoint: uses token if configured, else recipient email
+    const endpointToken = import.meta.env?.VITE_FORMSUBMIT_TOKEN
+    const formSubmitUrl = endpointToken
+      ? `https://formsubmit.co/ajax/${endpointToken}`
+      : `https://formsubmit.co/ajax/${recipient}`
+
+    const formSubmitRes = await fetch(formSubmitUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        _subject: emailSubject,
+        _template: 'table',
+        _captcha: 'false',
+        _replyto: payload.contactType === 'email' ? payload.contactValue : undefined,
+        Category: payload.category,
+        Title: payload.title || payload.category,
+        VerifiedContact: `${payload.contactValue} (${payload.contactType.toUpperCase()})`,
+        Description: payload.description,
+        ScreenResolution: diagnostics.screenResolution,
+        Platform: diagnostics.platform,
+        Browser: diagnostics.userAgent,
+        SubmissionDate: diagnostics.timestamp,
+      }),
+    })
+
+    const data = await formSubmitRes.json().catch(() => null)
+
+    if (data) {
+      if (data.success === 'true' || data.success === true) {
+        return { success: true, message: 'Thank you! Your feedback has been delivered to your email inbox.' }
+      }
+
+      // Check if FormSubmit activation is pending
+      if (typeof data.message === 'string' && data.message.toLowerCase().includes('activation')) {
+        return {
+          success: true,
+          needsActivation: true,
+          message: 'Activation email sent! Please check your inbox (and Spam folder) to click "Activate Form" once.',
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('FormSubmit dispatch issue:', err)
+  }
+
+  // 3. Fallback queue in localStorage so feedback is never lost
   try {
     const queue = JSON.parse(localStorage.getItem('fpe_feedback_queue') || '[]')
     queue.push({ ...payload, timestamp: new Date().toISOString() })
     localStorage.setItem('fpe_feedback_queue', JSON.stringify(queue))
   } catch {
-    // localStorage might be unavailable in some private modes
+    // Local storage best-effort
   }
 
   return {
     success: true,
-    message: 'Thank you! Your feedback has been recorded and delivered.',
+    message: 'Thank you! Your feedback has been recorded.',
   }
 }

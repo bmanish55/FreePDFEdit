@@ -57,6 +57,7 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
   const [description, setDescription] = useState('')
   const [detailsError, setDetailsError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [needsActivation, setNeedsActivation] = useState(false)
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -85,6 +86,7 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
       setTitle('')
       setDescription('')
       setDetailsError('')
+      setNeedsActivation(false)
     }
   }, [isOpen])
 
@@ -145,6 +147,7 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
 
     setIsSubmitting(false)
     if (res.success) {
+      setNeedsActivation(!!res.needsActivation)
       setStep(3)
     } else {
       setDetailsError(res.message || 'Could not send feedback. Please try again.')
@@ -449,10 +452,12 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
             </div>
             <div>
               <h3 className="text-lg font-semibold text-slate-900">
-                Thank You for Your Feedback!
+                {needsActivation ? 'Feedback Submitted!' : 'Thank You for Your Feedback!'}
               </h3>
               <p className="mt-1.5 text-xs text-slate-500 max-w-sm mx-auto">
-                Your feedback has been successfully submitted and delivered directly to the engineering team. We appreciate your contribution!
+                {needsActivation
+                  ? "An activation email was sent by FormSubmit to the admin email. Please check your Gmail (including Spam/Updates) and click 'Activate Form' once. Subsequent feedbacks will land directly in your inbox!"
+                  : 'Your feedback has been successfully submitted and delivered directly to the engineering team. We appreciate your contribution!'}
               </p>
             </div>
             <div className="pt-2">
