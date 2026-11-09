@@ -28,6 +28,18 @@ export async function exportPdf(pdfBytes: Uint8Array, objects: EditObject[], fil
       })
       continue
     }
+    if (object.type === 'whiteout' || object.type === 'highlight') {
+      page.drawRectangle({
+        x: object.x,
+        y: topLeftToPdfY(height, object.y, object.height),
+        width: object.width,
+        height: object.height,
+        color: object.type === 'whiteout' ? rgb(1, 1, 1) : rgb(1, 1, 0),
+        opacity: object.type === 'highlight' ? 0.4 : 1,
+      })
+      continue
+    }
+    if (object.type !== 'text') continue
     if (object.coverOriginal) {
       page.drawRectangle({
         x: object.x - 2,

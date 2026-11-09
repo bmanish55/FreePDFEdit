@@ -18,6 +18,9 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
   const [isNearViewport, setIsNearViewport] = useState(false)
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
   const [textItems, setTextItems] = useState<PdfTextItem[]>([])
+  const [drawPreview, setDrawPreview] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
+  const [renderError, setRenderError] = useState('')
+  const drawStart = useRef({ x: 0, y: 0 })
   const activeTool = usePdfStore((state) => state.activeTool)
   const allObjects = usePdfStore((state) => state.objects)
   const objects = allObjects.filter((object) => object.page === pageNumber)
@@ -43,23 +46,27 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
     if (!isNearViewport) return
     let cancelled = false
     const renderPage = async () => {
-      const page = await document.getPage(pageNumber)
-      const viewport = page.getViewport({ scale: zoom })
-      const extractedText = await extractText(page, pageNumber)
-      if (cancelled) return
-      const canvas = canvasRef.current
-      if (!canvas) return
-      const pixelRatio = window.devicePixelRatio || 1
-      canvas.width = Math.ceil(viewport.width * pixelRatio)
-      canvas.height = Math.ceil(viewport.height * pixelRatio)
-      canvas.style.width = `${viewport.width}px`
-      canvas.style.height = `${viewport.height}px`
-      setDimensions({ width: viewport.width, height: viewport.height })
-      setTextItems(extractedText)
-      const context = canvas.getContext('2d')
-      if (!context) return
-      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
-      await page.render({ canvasContext: context, viewport }).promise
+      try {
+        const page = await document.getPage(pageNumber)
+        const viewport = page.getViewport({ scale: zoom })
+        const extractedText = await extractText(page, pageNumber)
+        if (cancelled) return
+        const canvas = canvasRef.current
+        if (!canvas) return
+        const pixelRatio = window.devicePixelRatio || 1
+        canvas.width = Math.ceil(viewport.width * pixelRatio)
+        canvas.height = Math.ceil(viewport.height * pixelRatio)
+        canvas.style.width = `${viewport.width}px`
+        canvas.style.height = `${viewport.height}px`
+        setDimensions({ width: viewport.width, height: viewport.height })
+        setTextItems(extractedText)
+        const context = canvas.getContext('2d')
+        if (!context) return
+        context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
+        await page.render({ canvasContext: context, viewport }).promise
+      } catch {
+        if (!cancelled) setRenderError('This page could not be rendered.')
+      }
     }
     void renderPage()
     return () => {
@@ -68,6 +75,13 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
   }, [document, isNearViewport, pageNumber, zoom])
 
   const handleOverlayPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (activeTool === 'whiteout' || activeTool === 'highlight') {
+      const bounds = event.currentTarget.getBoundingClientRect()
+      drawStart.current = screenToPdf({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, zoom)
+      setDrawPreview({ x: drawStart.current.x, y: drawStart.current.y, width: 0, height: 0 })
+      event.currentTarget.setPointerCapture(event.pointerId)
+      return
+    }
     if (activeTool !== 'addText') {
       selectObject(null)
       return
@@ -88,6 +102,31 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
       color: '#000000',
       coverOriginal: false,
     })
+  }
+
+  const handleOverlayPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const point = screenToPdf({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, zoom)
+    setDrawPreview({
+      x: Math.min(drawStart.current.x, point.x),
+      y: Math.min(drawStart.current.y, point.y),
+      width: Math.abs(point.x - drawStart.current.x),
+      height: Math.abs(point.y - drawStart.current.y),
+    })
+  }
+
+  const handleOverlayPointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+    event.currentTarget.releasePointerCapture(event.pointerId)
+    if (!drawPreview || drawPreview.width < 5 || drawPreview.height < 5) {
+      setDrawPreview(null)
+      return
+    }
+    if (activeTool === 'whiteout' || activeTool === 'highlight') {
+      addObject({ id: crypto.randomUUID(), type: activeTool, page: pageNumber, ...drawPreview })
+    }
+    setDrawPreview(null)
   }
 
   const handleExistingText = (event: PointerEvent<HTMLDivElement>, item: PdfTextItem) => {
@@ -118,7 +157,13 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
     <div ref={containerRef} className="relative mx-auto mb-8 w-fit max-w-full overflow-auto bg-white shadow-md">
       <canvas ref={canvasRef} aria-label={`PDF page ${pageNumber}`} className={dimensions.width ? 'block' : 'hidden'} />
       {dimensions.width > 0 && (
-        <div className="absolute inset-0" style={{ touchAction: activeTool === 'select' ? 'auto' : 'none' }} onPointerDown={handleOverlayPointerDown}>
+        <div
+          className="absolute inset-0"
+          style={{ touchAction: activeTool === 'select' ? 'auto' : 'none' }}
+          onPointerDown={handleOverlayPointerDown}
+          onPointerMove={handleOverlayPointerMove}
+          onPointerUp={handleOverlayPointerUp}
+        >
           {activeTool === 'select' && textItems.map((item) => (
             <div
               key={item.key}
@@ -129,9 +174,21 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
             />
           ))}
           {objects.map((object) => <ObjectView key={object.id} object={object} zoom={zoom} />)}
+          {drawPreview && (
+            <div
+              className={`absolute ${activeTool === 'whiteout' ? 'bg-white' : 'bg-yellow-300/40'} border border-slate-400`}
+              style={{
+                left: drawPreview.x * zoom,
+                top: drawPreview.y * zoom,
+                width: drawPreview.width * zoom,
+                height: drawPreview.height * zoom,
+              }}
+            />
+          )}
         </div>
       )}
-      {!dimensions.width && <div className="h-32 w-64 animate-pulse bg-slate-100" aria-label="Loading page" />}
+      {!dimensions.width && !renderError && <div className="h-32 w-64 animate-pulse bg-slate-100" aria-label="Loading page" />}
+      {renderError && <p role="alert" className="p-6 text-sm text-red-600">{renderError}</p>}
     </div>
   )
 }

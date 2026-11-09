@@ -27,8 +27,18 @@ export type ImageObject = {
   mime: 'image/png' | 'image/jpeg'
 }
 
-export type EditObject = TextObject | ImageObject
-export type ActiveTool = 'select' | 'addText' | 'addImage'
+export type RectObject = {
+  id: string
+  type: 'whiteout' | 'highlight'
+  page: number
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export type EditObject = TextObject | ImageObject | RectObject
+export type ActiveTool = 'select' | 'addText' | 'addImage' | 'whiteout' | 'highlight'
 
 type PdfState = {
   pdfBytes: Uint8Array | null

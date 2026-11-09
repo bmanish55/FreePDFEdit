@@ -21,6 +21,7 @@ export default function App() {
   const fileName = usePdfStore((state) => state.fileName)
   const [pdfDocument, setPdfDocument] = useState<pdfjsLib.PDFDocumentProxy | null>(null)
   const [error, setError] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
 
   const handleFile = async (file: File) => {
     if (file.type !== 'application/pdf') {
@@ -29,10 +30,17 @@ export default function App() {
     }
 
     setError('')
-    const bytes = new Uint8Array(await file.arrayBuffer())
-    const loadedDocument = await pdfjsLib.getDocument({ data: bytes.slice() }).promise
-    setPdf(bytes, file.name, loadedDocument.numPages)
-    setPdfDocument(loadedDocument)
+    setIsLoading(true)
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      const loadedDocument = await pdfjsLib.getDocument({ data: bytes.slice() }).promise
+      setPdf(bytes, file.name, loadedDocument.numPages)
+      setPdfDocument(loadedDocument)
+    } catch {
+      setError('This PDF could not be opened. It may be corrupt or password-protected.')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleDownload = async () => {
@@ -48,6 +56,16 @@ export default function App() {
   useEffect(() => () => {
     pdfDocument?.destroy()
   }, [pdfDocument])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Delete' && document.activeElement?.tagName !== 'INPUT') {
+        usePdfStore.getState().deleteSelected()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -67,6 +85,7 @@ export default function App() {
         <div className="mx-auto flex max-w-[1540px] gap-8 px-4 py-8 sm:px-6 lg:py-10">
           <section aria-label="PDF workspace" className="min-w-0 flex-1">
             {error && <p role="alert" className="mb-4 text-center text-sm text-red-600">{error}</p>}
+            {isLoading && <p role="status" className="mb-4 text-center text-sm text-slate-600">Loading PDF…</p>}
             {!pdfBytes || !pdfDocument ? (
               <UploadZone onFile={(file) => void handleFile(file)} />
             ) : (

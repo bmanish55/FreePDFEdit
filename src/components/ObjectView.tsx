@@ -37,6 +37,18 @@ export default function ObjectView({ object, zoom }: ObjectViewProps) {
     }, false)
   }
 
+  if (object.type === 'whiteout' || object.type === 'highlight') {
+    return (
+      <div
+        className={`absolute ${object.type === 'whiteout' ? 'bg-white' : 'bg-yellow-300/40'} ${selected ? 'ring-2 ring-blue-500' : ''}`}
+        style={{ left: position.x, top: position.y, width: object.width * zoom, height: object.height * zoom }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)}
+      />
+    )
+  }
+
   if (object.type === 'image') {
     return (
       <div
@@ -58,6 +70,7 @@ export default function ObjectView({ object, zoom }: ObjectViewProps) {
                 width: object.width,
                 height: object.height,
               }
+
               event.currentTarget.setPointerCapture(event.pointerId)
               beginHistory()
             }}
@@ -75,6 +88,8 @@ export default function ObjectView({ object, zoom }: ObjectViewProps) {
       </div>
     )
   }
+
+  if (object.type !== 'text') return null
 
   return (
     <div

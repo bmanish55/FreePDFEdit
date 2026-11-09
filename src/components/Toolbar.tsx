@@ -52,6 +52,12 @@ export default function Toolbar() {
         Add Image
         <input type="file" accept="image/png,image/jpeg" className="sr-only" onChange={(event) => void handleImageChange(event)} onClick={() => setActiveTool('addImage')} />
       </label>
+      <button type="button" onClick={() => setActiveTool('whiteout')} className={`rounded border px-3 py-1 text-sm ${activeTool === 'whiteout' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-300'}`}>
+        Whiteout
+      </button>
+      <button type="button" onClick={() => setActiveTool('highlight')} className={`rounded border px-3 py-1 text-sm ${activeTool === 'highlight' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-300'}`}>
+        Highlight
+      </button>
       <button type="button" onClick={undo} className="rounded border border-slate-300 px-3 py-1 text-sm">
         Undo
       </button>
