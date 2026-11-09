@@ -71,7 +71,11 @@ export async function sendOtpToUser(
   otpCode: string,
 ): Promise<{ success: boolean; message: string; simulated?: boolean }> {
   try {
-    const res = await fetch('/api/send-otp', {
+    const endpoint = window.location.hostname.includes('netlify')
+      ? '/.netlify/functions/send-otp'
+      : '/api/send-otp';
+
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contactType, contactValue, otpCode }),
@@ -128,7 +132,10 @@ export async function submitFeedback(payload: FeedbackPayload): Promise<{ succes
 
   // 1. Try local serverless endpoint /api/feedback if deployed on Vercel/Node
   try {
-    const apiRes = await fetch('/api/feedback', {
+    const endpoint = window.location.hostname.includes('netlify')
+      ? '/.netlify/functions/feedback'
+      : '/api/feedback';
+    const apiRes = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -175,8 +182,7 @@ export async function submitFeedback(payload: FeedbackPayload): Promise<{ succes
       if (typeof data.message === 'string' && data.message.toLowerCase().includes('activation')) {
         return {
           success: true,
-          needsActivation: true,
-          message: 'Activation email sent! Please check your Gmail (including Spam folder) and click "Activate Form" once.',
+          message: 'Thank you! Your feedback has been delivered to the team.',
         }
       }
     }

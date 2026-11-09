@@ -57,7 +57,6 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
   const [description, setDescription] = useState('')
   const [detailsError, setDetailsError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [needsActivation, setNeedsActivation] = useState(false)
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -86,7 +85,6 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
       setTitle('')
       setDescription('')
       setDetailsError('')
-      setNeedsActivation(false)
     }
   }, [isOpen])
 
@@ -124,7 +122,7 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
         setStep(2)
       } else {
         setIsVerifyingOtp(false)
-        setOtpError('Invalid OTP code. Please verify and try again.')
+        setOtpError('Invalid OTP code. Please check your inbox and try again.')
       }
     }, 400)
   }
@@ -147,7 +145,6 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
 
     setIsSubmitting(false)
     if (res.success) {
-      setNeedsActivation(!!res.needsActivation)
       setStep(3)
     } else {
       setDetailsError(res.message || 'Could not send feedback. Please try again.')
@@ -159,7 +156,7 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
       role="dialog"
       aria-modal="true"
       aria-labelledby="feedback-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
     >
       {/* Backdrop */}
       <div
@@ -168,18 +165,18 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
       />
 
       {/* Modal Card */}
-      <div className="relative z-10 w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl transition-all">
+      <div className="relative z-10 w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-2xl transition-all my-auto">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
-              <MessageSquareHeart size={22} strokeWidth={2} />
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3 sm:pb-4">
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600 shrink-0">
+              <MessageSquareHeart size={20} strokeWidth={2} />
             </div>
-            <div>
-              <h2 id="feedback-modal-title" className="text-base font-semibold text-slate-900">
+            <div className="min-w-0">
+              <h2 id="feedback-modal-title" className="text-sm sm:text-base font-semibold text-slate-900 truncate">
                 Share Your Feedback
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-[11px] sm:text-xs text-slate-500 truncate">
                 Help us improve FreePDFEdit. Verified submissions get prioritized.
               </p>
             </div>
@@ -187,7 +184,7 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
           <button
             onClick={onClose}
             aria-label="Close"
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 shrink-0"
           >
             <X size={18} />
           </button>
@@ -195,14 +192,14 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
 
         {/* STEP 1: Contact & OTP Verification */}
         {step === 1 && (
-          <div className="mt-5 space-y-4">
+          <div className="mt-4 sm:mt-5 space-y-4">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
               <div className="flex items-center gap-1.5 font-medium text-slate-800 mb-1">
-                <ShieldCheck size={16} className="text-brand-600" />
+                <ShieldCheck size={16} className="text-brand-600 shrink-0" />
                 <span>Verification Required</span>
               </div>
-              <p>
-                To prevent spam and allow us to follow up, please provide a valid email or mobile number with one-time verification.
+              <p className="leading-relaxed">
+                Please enter your email or mobile number. We will send you a one-time verification code to verify your contact so we can respond to your feedback.
               </p>
             </div>
 
@@ -242,12 +239,12 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
               </button>
             </div>
 
-            {/* Contact Input */}
+            {/* Contact Input with Responsive Button */}
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">
                 {contactType === 'email' ? 'Your Email Address' : 'Your Mobile Number'}
               </label>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type={contactType === 'email' ? 'email' : 'tel'}
                   value={contactValue}
@@ -259,7 +256,7 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
                   placeholder={
                     contactType === 'email' ? 'e.g. name@company.com' : 'e.g. +91 9876543210'
                   }
-                  className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:bg-slate-100 disabled:text-slate-500"
+                  className="w-full sm:flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:bg-slate-100 disabled:text-slate-500"
                 />
                 {!otpSent ? (
                   <Button
@@ -267,6 +264,7 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
                     size="sm"
                     onClick={() => void handleSendOtp()}
                     disabled={isSendingOtp || !contactValue.trim()}
+                    className="w-full sm:w-auto shrink-0 justify-center whitespace-nowrap"
                   >
                     {isSendingOtp ? (
                       <RefreshCw size={14} className="animate-spin" />
@@ -282,6 +280,7 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
                       setOtpSent(false)
                       setEnteredOtp('')
                     }}
+                    className="w-full sm:w-auto shrink-0 justify-center"
                   >
                     Change
                   </Button>
@@ -290,9 +289,9 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
               {contactError && <p className="mt-1.5 text-xs text-red-600">{contactError}</p>}
             </div>
 
-            {/* OTP Input Block */}
+            {/* OTP Input Block - Fully Responsive on Mobile */}
             {otpSent && (
-              <div className="rounded-xl border border-brand-200 bg-brand-50/40 p-4 space-y-3">
+              <div className="rounded-xl border border-brand-200 bg-brand-50/40 p-3 sm:p-4 space-y-3">
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-semibold text-slate-800">Enter 6-Digit OTP</span>
                   <span className="inline-flex items-center gap-1 text-slate-500">
@@ -311,17 +310,16 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
                   </span>
                 </div>
 
-                {/* Development helper tip */}
-                <div className="rounded-md bg-amber-50 px-2.5 py-1 text-[11px] text-amber-800 border border-amber-200/60 flex items-center justify-between">
-                  <span>Verification code sent to {contactValue}</span>
-                  <span className="font-mono font-bold tracking-wider bg-white px-1.5 py-0.5 rounded border border-amber-300">
-                    {generatedOtp}
-                  </span>
-                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  We have dispatched a 6-digit verification code to{' '}
+                  <strong className="text-slate-800 break-all">{contactValue}</strong>. Please check your inbox (including spam) and enter it below.
+                </p>
 
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <input
                     type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
                     maxLength={6}
                     value={enteredOtp}
                     onChange={(e) => {
@@ -329,19 +327,20 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
                       setOtpError('')
                     }}
                     placeholder="Enter 6-digit OTP"
-                    className="flex-1 tracking-widest text-center font-mono text-base font-semibold rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                    className="w-full sm:flex-1 tracking-widest text-center font-mono text-base sm:text-lg font-bold rounded-lg border border-slate-300 bg-white py-2 px-3 text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                   />
                   <Button
                     variant="primary"
                     size="sm"
                     onClick={handleVerifyOtp}
                     disabled={isVerifyingOtp || enteredOtp.length < 6}
+                    className="w-full sm:w-auto shrink-0 justify-center whitespace-nowrap"
                   >
                     {isVerifyingOtp ? (
                       <RefreshCw size={14} className="animate-spin" />
                     ) : (
                       <>
-                        <span>Verify</span>
+                        <span>Verify OTP</span>
                         <ArrowRight size={14} />
                       </>
                     )}
@@ -355,14 +354,14 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
 
         {/* STEP 2: Feedback Details */}
         {step === 2 && (
-          <div className="mt-5 space-y-4">
+          <div className="mt-4 sm:mt-5 space-y-4">
             {/* Verified Contact Pill */}
             <div className="flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2 border border-emerald-200 text-xs">
-              <span className="inline-flex items-center gap-1.5 font-medium text-emerald-800">
-                <CheckCircle2 size={15} className="text-emerald-600" />
-                Verified: {contactValue}
+              <span className="inline-flex items-center gap-1.5 font-medium text-emerald-800 truncate">
+                <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
+                <span className="truncate">Verified: {contactValue}</span>
               </span>
-              <span className="text-[11px] text-emerald-600 uppercase font-semibold">Verified</span>
+              <span className="text-[10px] sm:text-[11px] text-emerald-600 uppercase font-semibold shrink-0">Verified</span>
             </div>
 
             {/* Category / Selective Title */}
@@ -418,8 +417,8 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
               {detailsError && <p className="mt-1 text-xs text-red-600">{detailsError}</p>}
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-              <Button variant="secondary" size="sm" onClick={() => setStep(1)}>
+            <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 pt-2 border-t border-slate-100">
+              <Button variant="secondary" size="sm" onClick={() => setStep(1)} className="w-full sm:w-auto">
                 Back
               </Button>
               <Button
@@ -427,6 +426,7 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
                 size="sm"
                 onClick={() => void handleSubmit()}
                 disabled={isSubmitting || !description.trim()}
+                className="w-full sm:w-auto"
               >
                 {isSubmitting ? (
                   <>
@@ -444,24 +444,22 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
           </div>
         )}
 
-        {/* STEP 3: Success Screen */}
+        {/* STEP 3: Professional Success Screen - No Activation Mentions */}
         {step === 3 && (
-          <div className="py-8 text-center space-y-4">
+          <div className="py-6 sm:py-8 text-center space-y-4">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
               <CheckCircle2 size={32} />
             </div>
             <div>
               <h3 className="text-lg font-semibold text-slate-900">
-                {needsActivation ? 'Feedback Submitted!' : 'Thank You for Your Feedback!'}
+                Thank You for Your Feedback!
               </h3>
-              <p className="mt-1.5 text-xs text-slate-500 max-w-sm mx-auto">
-                {needsActivation
-                  ? "An activation email was sent by FormSubmit to the admin email. Please check your Gmail (including Spam/Updates) and click 'Activate Form' once. Subsequent feedbacks will land directly in your inbox!"
-                  : 'Your feedback has been successfully submitted and delivered directly to the engineering team. We appreciate your contribution!'}
+              <p className="mt-1.5 text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                Your feedback has been successfully submitted and delivered directly to the team. We appreciate your contribution!
               </p>
             </div>
             <div className="pt-2">
-              <Button variant="primary" size="sm" onClick={onClose}>
+              <Button variant="primary" size="sm" onClick={onClose} className="w-full sm:w-auto px-6">
                 Done
               </Button>
             </div>
@@ -470,10 +468,10 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
 
         {/* Modal Footer Note */}
         {step !== 3 && (
-          <div className="mt-5 border-t border-slate-100 pt-3 flex items-center justify-between text-[11px] text-slate-400">
+          <div className="mt-4 sm:mt-5 border-t border-slate-100 pt-3 flex items-center justify-between text-[11px] text-slate-400">
             <span className="flex items-center gap-1">
-              <Sparkles size={12} className="text-brand-500" />
-              We respect your privacy. Contact is only used for feedback follow-ups.
+              <Sparkles size={12} className="text-brand-500 shrink-0" />
+              <span>We respect your privacy. Contact is only used for feedback follow-ups.</span>
             </span>
           </div>
         )}
