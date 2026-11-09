@@ -85,7 +85,7 @@ export default function App() {
             isLoading={isLoading}
           />
         ) : (
-          <div className="min-h-full bg-slate-100 pb-8">
+          <div className="min-h-full bg-slate-100">
             <Toolbar />
 
             {/* Notices below toolbar */}
@@ -107,19 +107,37 @@ export default function App() {
               </div>
             )}
 
-            <div className="mx-auto flex max-w-[1540px] gap-8 px-4 py-8 sm:px-6 lg:py-10">
-              <section aria-label="PDF workspace" className="min-w-0 flex-1">
-                {isLoading && <p role="status" className="mb-4 text-center text-sm text-slate-600">Loading PDF...</p>}
-                <div aria-label="PDF pages">
+            {/* Workspace */}
+            <div className="mx-auto flex max-w-7xl gap-6 px-4 py-6">
+              {/* Left (main) column */}
+              <div className="min-w-0 flex-1 overflow-x-auto">
+                {isLoading && (
+                  <p role="status" className="mb-4 text-center text-sm text-slate-600">
+                    Loading PDF...
+                  </p>
+                )}
+                <div className="flex flex-col gap-6" aria-label="PDF pages">
                   {Array.from({ length: numPages }, (_, index) => (
-                    <PdfPage key={index + 1} document={pdfDocument} pageNumber={index + 1} zoom={zoom} />
+                    <PdfPage
+                      key={index + 1}
+                      document={pdfDocument}
+                      pageNumber={index + 1}
+                      zoom={zoom}
+                    />
                   ))}
                 </div>
-              </section>
-              <AdSlot position="side" />
+              </div>
+
+              {/* Right column (ad) */}
+              <div className="hidden xl:block w-[300px] shrink-0">
+                <div className="sticky top-32">
+                  <AdSlot position="side" />
+                </div>
+              </div>
             </div>
 
-            <div className="px-4 pb-8 sm:px-6">
+            {/* Bottom ad slot */}
+            <div className="mx-auto max-w-7xl px-4 pb-8">
               <AdSlot position="bottom" />
             </div>
           </div>

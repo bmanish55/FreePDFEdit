@@ -1,5 +1,6 @@
-import { AlertCircle, Loader2, MousePointerClick, ShieldCheck, Zap } from 'lucide-react'
+import { AlertTriangle, Loader2, MousePointerClick, ShieldCheck, Zap } from 'lucide-react'
 import AdSlot from './AdSlot'
+import Button from './ui/Button'
 import Notice from './ui/Notice'
 import UploadZone from './UploadZone'
 
@@ -27,10 +28,18 @@ export default function LandingView({ onFile, error, isLoading }: LandingViewPro
 
           <div className="mx-auto mt-8 max-w-2xl text-left">
             {error && (
-              <div className="mb-4">
-                <Notice tone="error" icon={<AlertCircle size={18} strokeWidth={2} />}>
+              <div className="mb-6 rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-slate-200">
+                <Notice tone="error" icon={<AlertTriangle size={18} strokeWidth={2} />}>
                   {error}
                 </Notice>
+                <div className="mt-4 flex justify-center">
+                  <Button
+                    variant="secondary"
+                    onClick={() => document.getElementById('pdf-upload')?.click()}
+                  >
+                    Choose another PDF
+                  </Button>
+                </div>
               </div>
             )}
             {isLoading && (

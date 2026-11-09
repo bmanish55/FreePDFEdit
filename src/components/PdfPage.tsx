@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { PointerEvent } from 'react'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { screenToPdf } from '../lib/coords'
@@ -27,6 +27,7 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
   const addObject = usePdfStore((state) => state.addObject)
   const selectObject = usePdfStore((state) => state.selectObject)
   const setVisiblePage = usePdfStore((state) => state.setVisiblePage)
+  const numPages = usePdfStore((state) => state.numPages)
 
   useEffect(() => {
     const container = containerRef.current
@@ -167,51 +168,58 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
   }
 
   return (
-    <div ref={containerRef} className="relative mx-auto mb-8 w-fit max-w-full overflow-auto bg-white shadow-md">
-      <canvas ref={canvasRef} aria-label={`PDF page ${pageNumber}`} className={dimensions.width ? 'block' : 'hidden'} />
-      {dimensions.width > 0 && (
-        <div
-          className="absolute inset-0"
-          style={{ touchAction: activeTool === 'select' ? 'auto' : 'none' }}
-          onPointerDown={handleOverlayPointerDown}
-          onPointerMove={handleOverlayPointerMove}
-          onPointerUp={handleOverlayPointerUp}
-        >
-          {activeTool === 'select' &&
-            textRuns
-              .filter((run) => !objects.some((obj) => obj.type === 'text' && obj.originalKey === run.key))
-              .map((run) => (
-                <div
-                  key={run.key}
-                  className="absolute cursor-text hover:bg-blue-400/10"
-                  style={{
-                    left: run.x * zoom,
-                    top: (run.baselineY - run.fontSize * 0.9) * zoom,
-                    width: run.width * zoom,
-                    height: (run.fontSize * 1.15) * zoom,
-                  }}
-                  aria-label={`Edit text: ${run.text}`}
-                  onPointerDown={(event) => handleExistingText(event, run)}
-                />
-              ))}
-          {objects.map((object) => (
-            <ObjectView key={object.id} object={object} zoom={zoom} />
-          ))}
-          {drawPreview && (
-            <div
-              className={`absolute ${activeTool === 'whiteout' ? 'bg-white' : 'bg-yellow-300/40'} border border-slate-400`}
-              style={{
-                left: drawPreview.x * zoom,
-                top: drawPreview.y * zoom,
-                width: drawPreview.width * zoom,
-                height: drawPreview.height * zoom,
-              }}
-            />
-          )}
-        </div>
-      )}
-      {!dimensions.width && !renderError && <div className="h-32 w-64 animate-pulse bg-slate-100" aria-label="Loading page" />}
-      {renderError && <p role="alert" className="p-6 text-sm text-red-600">{renderError}</p>}
+    <div ref={containerRef} className="mx-auto shrink-0">
+      <div className="relative bg-white shadow-md ring-1 ring-slate-200">
+        <canvas ref={canvasRef} aria-label={`PDF page ${pageNumber}`} className={dimensions.width ? 'block' : 'hidden'} />
+        {dimensions.width > 0 && (
+          <div
+            className="absolute inset-0"
+            style={{ touchAction: activeTool === 'select' ? 'auto' : 'none' }}
+            onPointerDown={handleOverlayPointerDown}
+            onPointerMove={handleOverlayPointerMove}
+            onPointerUp={handleOverlayPointerUp}
+          >
+            {activeTool === 'select' &&
+              textRuns
+                .filter((run) => !objects.some((obj) => obj.type === 'text' && obj.originalKey === run.key))
+                .map((run) => (
+                  <div
+                    key={run.key}
+                    className="absolute cursor-text hover:bg-blue-400/10"
+                    style={{
+                      left: run.x * zoom,
+                      top: (run.baselineY - run.fontSize * 0.9) * zoom,
+                      width: run.width * zoom,
+                      height: (run.fontSize * 1.15) * zoom,
+                    }}
+                    aria-label={`Edit text: ${run.text}`}
+                    onPointerDown={(event) => handleExistingText(event, run)}
+                  />
+                ))}
+            {objects.map((object) => (
+              <ObjectView key={object.id} object={object} zoom={zoom} />
+            ))}
+            {drawPreview && (
+              <div
+                className={`absolute ${activeTool === 'whiteout' ? 'bg-white' : 'bg-yellow-300/40'} border border-slate-400`}
+                style={{
+                  left: drawPreview.x * zoom,
+                  top: drawPreview.y * zoom,
+                  width: drawPreview.width * zoom,
+                  height: drawPreview.height * zoom,
+                }}
+              />
+            )}
+          </div>
+        )}
+        {!dimensions.width && !renderError && (
+          <div className="h-[600px] w-[450px] max-w-full animate-pulse rounded bg-slate-200" aria-label="Loading page" />
+        )}
+        {renderError && <p role="alert" className="p-6 text-sm text-red-600">{renderError}</p>}
+      </div>
+      <p className="mt-2 text-center text-xs text-slate-500">
+        Page {pageNumber} of {numPages}
+      </p>
     </div>
   )
 }
