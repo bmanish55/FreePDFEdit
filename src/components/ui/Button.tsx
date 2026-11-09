@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost'
-export type ButtonSize = 'md' | 'lg'
+export type ButtonSize = 'sm' | 'md' | 'lg'
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
@@ -25,7 +25,9 @@ export default function Button({
   const sizeClasses =
     size === 'lg'
       ? 'h-12 px-6 text-base font-semibold'
-      : 'h-10 px-4 text-sm font-medium'
+      : size === 'sm'
+        ? 'h-8 px-3 text-xs font-medium'
+        : 'h-10 px-4 text-sm font-medium'
 
   const variantClasses = {
     primary: 'bg-brand-600 text-white hover:bg-brand-700 shadow-sm',

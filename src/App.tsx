@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Sparkles } from 'lucide-react'
 import AdSlot from './components/AdSlot'
 import DesktopNotice from './components/DesktopNotice'
 import Footer from './components/Footer'
@@ -23,6 +23,7 @@ export default function App() {
   const objects = usePdfStore((state) => state.objects)
   const fileName = usePdfStore((state) => state.fileName)
   const textWarning = usePdfStore((state) => state.textWarning)
+  const setAiModalOpen = usePdfStore((state) => state.setAiModalOpen)
   const [pdfDocument, setPdfDocument] = useState<pdfjsLib.PDFDocumentProxy | null>(null)
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -95,7 +96,16 @@ export default function App() {
                   tone={textWarning.toLowerCase().includes('reduced') ? 'warning' : 'error'}
                   icon={<AlertTriangle size={18} strokeWidth={2} />}
                 >
-                  {textWarning}
+                  <div className="flex w-full items-center justify-between gap-3">
+                    <span>{textWarning}</span>
+                    <button
+                      onClick={() => setAiModalOpen(true)}
+                      className="inline-flex cursor-pointer items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900 hover:bg-amber-200 transition-colors"
+                    >
+                      <Sparkles size={13} className="text-amber-700" />
+                      <span>Fit with AI</span>
+                    </button>
+                  </div>
                 </Notice>
               </div>
             )}

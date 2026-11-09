@@ -11,10 +11,13 @@ import {
   Undo2,
   ZoomIn,
   ZoomOut,
+  Sparkles,
 } from 'lucide-react'
 import type { FontFamilyKey } from '../lib/fonts/fontMatcher'
 import { usePdfStore, type TextObject } from '../store/usePdfStore'
 import ToolButton from './ui/ToolButton'
+import Button from './ui/Button'
+import AiOptimizeModal from './AiOptimizeModal'
 
 export default function Toolbar() {
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -30,6 +33,8 @@ export default function Toolbar() {
   const selectedId = usePdfStore((state) => state.selectedId)
   const objects = usePdfStore((state) => state.objects)
   const updateObject = usePdfStore((state) => state.updateObject)
+  const isAiModalOpen = usePdfStore((state) => state.isAiModalOpen)
+  const setAiModalOpen = usePdfStore((state) => state.setAiModalOpen)
 
   const selectedTextObject = objects.find(
     (obj): obj is TextObject => obj.id === selectedId && obj.type === 'text',
@@ -238,8 +243,26 @@ export default function Toolbar() {
                 aria-label="Text color"
               />
             </label>
+
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setAiModalOpen(true)}
+              className="ml-auto inline-flex items-center gap-1.5 border-brand-200 bg-brand-50 text-xs font-medium text-brand-700 hover:bg-brand-100"
+            >
+              <Sparkles size={14} className="text-brand-600" />
+              <span>AI Fit & Polish</span>
+            </Button>
           </div>
         </div>
+      )}
+
+      {selectedTextObject && (
+        <AiOptimizeModal
+          isOpen={isAiModalOpen}
+          onClose={() => setAiModalOpen(false)}
+          textObject={selectedTextObject}
+        />
       )}
     </div>
   )
