@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, KeyboardEvent, PointerEvent } from 'react'
 import { pdfToScreen } from '../lib/coords'
 import { loadFont, type LoadedFont } from '../lib/fonts/fontLoader'
@@ -159,7 +159,7 @@ function TextView({ object, zoom }: { object: TextObject; zoom: number }) {
         />
       )}
       <div
-        className={`absolute ${selected ? 'ring-2 ring-blue-500' : ''} ${
+        className={`absolute ${selected ? 'ring-2 ring-brand-500' : ''} ${
           layout.fit !== 'ok' ? 'outline-2 outline-dashed outline-orange-500' : ''
         }`}
         style={{
@@ -259,7 +259,7 @@ export default function ObjectView({ object, zoom }: ObjectViewProps) {
     return (
       <div
         className={`absolute ${object.type === 'whiteout' ? 'bg-white' : 'bg-yellow-300/40'} ${
-          selected ? 'ring-2 ring-blue-500' : ''
+          selected ? 'ring-2 ring-brand-500' : ''
         }`}
         style={{ left: position.x, top: position.y, width: object.width * zoom, height: object.height * zoom }}
         onPointerDown={handlePointerDown}
@@ -273,7 +273,7 @@ export default function ObjectView({ object, zoom }: ObjectViewProps) {
 
   return (
     <div
-      className={`absolute ${selected ? 'ring-2 ring-blue-500' : ''}`}
+      className={`absolute ${selected ? 'ring-2 ring-brand-500' : ''}`}
       style={{ left: position.x, top: position.y, width: object.width * zoom, height: object.height * zoom }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -282,7 +282,7 @@ export default function ObjectView({ object, zoom }: ObjectViewProps) {
       <img src={object.dataUrl} alt="Added PDF" className="h-full w-full object-contain" draggable={false} />
       {selected && (
         <div
-          className="absolute bottom-[-5px] right-[-5px] h-3 w-3 cursor-se-resize rounded-sm bg-blue-600"
+          className="absolute bottom-[-5px] right-[-5px] h-3 w-3 cursor-se-resize rounded-sm bg-brand-600"
           onPointerDown={(event) => {
             event.stopPropagation()
             selectObject(object.id)

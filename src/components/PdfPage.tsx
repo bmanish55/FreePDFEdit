@@ -185,7 +185,7 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
                 .map((run) => (
                   <div
                     key={run.key}
-                    className="absolute cursor-text hover:bg-blue-400/10"
+                    className="absolute cursor-text hover:bg-brand-500/10"
                     style={{
                       left: run.x * zoom,
                       top: (run.baselineY - run.fontSize * 0.9) * zoom,
