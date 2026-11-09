@@ -7,6 +7,7 @@ import Header from './components/Header'
 import PdfPage from './components/PdfPage'
 import Toolbar from './components/Toolbar'
 import UploadZone from './components/UploadZone'
+import { exportPdf } from './lib/exportPdf'
 import { usePdfStore } from './store/usePdfStore'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
@@ -16,6 +17,8 @@ export default function App() {
   const numPages = usePdfStore((state) => state.numPages)
   const zoom = usePdfStore((state) => state.zoom)
   const setPdf = usePdfStore((state) => state.setPdf)
+  const objects = usePdfStore((state) => state.objects)
+  const fileName = usePdfStore((state) => state.fileName)
   const [pdfDocument, setPdfDocument] = useState<pdfjsLib.PDFDocumentProxy | null>(null)
   const [error, setError] = useState('')
 
@@ -24,11 +27,22 @@ export default function App() {
       setError('Please choose a PDF file.')
       return
     }
+
     setError('')
     const bytes = new Uint8Array(await file.arrayBuffer())
     const loadedDocument = await pdfjsLib.getDocument({ data: bytes.slice() }).promise
     setPdf(bytes, file.name, loadedDocument.numPages)
     setPdfDocument(loadedDocument)
+  }
+
+  const handleDownload = async () => {
+    if (!pdfBytes) return
+    try {
+      setError('')
+      await exportPdf(pdfBytes, objects, fileName)
+    } catch {
+      setError('Some characters are not supported yet (e.g. Hindi/Marathi). Please remove them.')
+    }
   }
 
   useEffect(() => () => {
@@ -38,7 +52,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50">
       <DesktopNotice />
-      <Header onDownload={() => undefined} hasPdf={Boolean(pdfBytes)} />
+      <Header onDownload={() => void handleDownload()} hasPdf={Boolean(pdfBytes)} />
       <main>
         <div className="px-4 py-4 sm:px-6">
           <AdSlot position="top" />
@@ -47,7 +61,7 @@ export default function App() {
           <nav aria-label="PDF editing tools" className="mx-auto flex max-w-6xl flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-slate-700">PDF tools</span>
             <Toolbar />
-            <span className="text-sm text-slate-500">Upload a PDF to get started</span>
+            <span className="text-sm text-slate-500">Edited text uses a standard font.</span>
           </nav>
         </div>
         <div className="mx-auto flex max-w-[1540px] gap-8 px-4 py-8 sm:px-6 lg:py-10">
