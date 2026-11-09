@@ -1,4 +1,4 @@
-﻿import fontkit from '@pdf-lib/fontkit'
+import fontkit from '@pdf-lib/fontkit'
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from 'pdf-lib'
 import { topLeftToPdfY } from './coords'
 import { loadFont, type LoadedFont } from './fonts/fontLoader'
@@ -77,14 +77,39 @@ export async function exportPdf(
         fontToUse = embeddedFonts.get(loadedFont.key)!
       } catch (fontErr) {
         console.warn(
-          `Font loading failed for ${activeFamily}, using emergency Helvetica fallback:`,
+          `Font loading failed for ${activeFamily}, using emergency fallback:`,
           fontErr,
         )
-        if (!embeddedFonts.has('helvetica-fallback')) {
-          const fallbackFont = await pdf.embedFont(StandardFonts.Helvetica)
-          embeddedFonts.set('helvetica-fallback', fallbackFont)
+        const standardFontName =
+          activeFamily === 'tinos'
+            ? object.bold && object.italic
+              ? StandardFonts.TimesRomanBoldItalic
+              : object.bold
+                ? StandardFonts.TimesRomanBold
+                : object.italic
+                  ? StandardFonts.TimesRomanItalic
+                  : StandardFonts.TimesRoman
+            : activeFamily === 'cousine'
+              ? object.bold && object.italic
+                ? StandardFonts.CourierBoldOblique
+                : object.bold
+                  ? StandardFonts.CourierBold
+                  : object.italic
+                    ? StandardFonts.CourierOblique
+                    : StandardFonts.Courier
+              : object.bold && object.italic
+                ? StandardFonts.HelveticaBoldOblique
+                : object.bold
+                  ? StandardFonts.HelveticaBold
+                  : object.italic
+                    ? StandardFonts.HelveticaOblique
+                    : StandardFonts.Helvetica
+
+        if (!embeddedFonts.has(standardFontName)) {
+          const fallbackFont = await pdf.embedFont(standardFontName)
+          embeddedFonts.set(standardFontName, fallbackFont)
         }
-        fontToUse = embeddedFonts.get('helvetica-fallback')!
+        fontToUse = embeddedFonts.get(standardFontName)!
       }
 
       const effectiveFont: LoadedFont = loadedFont || {
@@ -110,13 +135,36 @@ export async function exportPdf(
       }
 
       if (object.text) {
-        page.drawText(object.text, {
-          x: layout.textX,
-          y: height - layout.baselineY,
-          size: layout.fontSize,
-          font: fontToUse,
-          color: hexToRgb(object.color),
-        })
+        const textY = height - layout.baselineY
+        if (layout.wordSpacing && layout.wordSpacing > 0.01 && object.text.includes(' ')) {
+          const parts = object.text.split(' ')
+          let currentX = layout.textX
+          const spaceWidth = fontToUse.widthOfTextAtSize(' ', layout.fontSize) + layout.wordSpacing
+          for (let i = 0; i < parts.length; i++) {
+            const part = parts[i]
+            if (part.length > 0) {
+              page.drawText(part, {
+                x: currentX,
+                y: textY,
+                size: layout.fontSize,
+                font: fontToUse,
+                color: hexToRgb(object.color),
+              })
+              currentX += fontToUse.widthOfTextAtSize(part, layout.fontSize)
+            }
+            if (i < parts.length - 1) {
+              currentX += spaceWidth
+            }
+          }
+        } else {
+          page.drawText(object.text, {
+            x: layout.textX,
+            y: textY,
+            size: layout.fontSize,
+            font: fontToUse,
+            color: hexToRgb(object.color),
+          })
+        }
       }
     } catch (textErr) {
       console.error('Error drawing text in exportPdf:', textErr)

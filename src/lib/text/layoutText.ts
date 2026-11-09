@@ -1,4 +1,4 @@
-﻿import type { LoadedFont } from '../fonts/fontLoader'
+import type { LoadedFont } from '../fonts/fontLoader'
 import type { TextObject } from '../../store/usePdfStore'
 
 export type CoverRect = {
@@ -17,6 +17,7 @@ export type Layout = {
   cover: null | CoverRect
   fit: 'ok' | 'shrunk' | 'overflow'
   warning: string | null
+  wordSpacing?: number
 }
 
 export function layoutText(obj: TextObject, font: LoadedFont): Layout {
@@ -33,6 +34,7 @@ export function layoutText(obj: TextObject, font: LoadedFont): Layout {
       cover: null,
       fit: 'ok',
       warning: null,
+      wordSpacing: 0,
     }
   }
 
@@ -40,9 +42,27 @@ export function layoutText(obj: TextObject, font: LoadedFont): Layout {
   const available = original.maxRight - obj.x
   let fit: 'ok' | 'shrunk' | 'overflow' = 'ok'
   let warning: string | null = null
+  let wordSpacing = 0
 
-  if (w <= available) {
+  const isExactOriginal = obj.text === original.text
+  const spaceCount = (obj.text.match(/\s/g) || []).length
+
+  if (isExactOriginal) {
+    // Exact original line must NEVER shrink and has no warnings
     fit = 'ok'
+    warning = null
+    size = original.fontSize
+    w = font.measure(obj.text, size)
+    // Match justified word spacing from original line
+    if (original.width > w && spaceCount > 0) {
+      wordSpacing = Math.min(Math.max(0, (original.width - w) / spaceCount), size * 0.8)
+    }
+  } else if (w <= available) {
+    fit = 'ok'
+    // Slightly edited text: maintain natural word spacing if line was justified
+    if (original.width > w && spaceCount > 0 && Math.abs(original.width - w) < size * 3) {
+      wordSpacing = Math.min(Math.max(0, (original.width - w) / spaceCount), size * 0.5)
+    }
   } else {
     const minSize = original.fontSize * 0.75
     const needed = (size * available) / w
@@ -63,7 +83,8 @@ export function layoutText(obj: TextObject, font: LoadedFont): Layout {
   // Cover rectangle (hides original text) with pad = 1.5
   const pad = 1.5
   const left = Math.min(obj.x, original.x) - pad
-  const right = Math.max(obj.x + w, original.x + original.width) + pad
+  const effectiveTextWidth = w + wordSpacing * spaceCount
+  const right = Math.max(obj.x + effectiveTextWidth, original.x + original.width) + pad
   const top = obj.baselineY - font.ascent * original.fontSize - pad
   const bottom = obj.baselineY + font.descent * original.fontSize + pad
 
@@ -83,6 +104,7 @@ export function layoutText(obj: TextObject, font: LoadedFont): Layout {
     cover,
     fit,
     warning,
+    wordSpacing,
   }
 }
 

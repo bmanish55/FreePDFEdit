@@ -54,12 +54,25 @@ function TextView({ object, zoom }: { object: TextObject; zoom: number }) {
         : activeFamily === 'cousine'
           ? 'monospace'
           : activeFamily === 'tinos'
-            ? 'serif'
+            ? "'Tinos', 'Times New Roman', Times, serif"
             : 'sans-serif',
     unitsPerEm: 1000,
     ascent: 0.95,
     descent: 0.25,
-    measure: (text: string, fontSize: number) => text.length * fontSize * 0.55,
+    measure: (text: string, fontSize: number) => {
+      if (typeof document !== 'undefined') {
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          const fontStyle = object.italic ? 'italic ' : ''
+          const fontWeight = object.bold ? 'bold ' : ''
+          const family = activeFamily === 'tinos' ? '"Times New Roman", Times, serif' : 'sans-serif'
+          ctx.font = `${fontStyle}${fontWeight}${fontSize}px ${family}`
+          return ctx.measureText(text).width
+        }
+      }
+      return text.length * fontSize * (activeFamily === 'tinos' ? 0.44 : 0.52)
+    },
   }
 
   const layout = layoutText(object, effectiveFont)
@@ -137,7 +150,9 @@ function TextView({ object, zoom }: { object: TextObject; zoom: number }) {
   const elementHeight = (effectiveFont.ascent + effectiveFont.descent) * layout.fontSize * zoom
   const elementTop = (layout.baselineY - effectiveFont.ascent * layout.fontSize) * zoom
   const elementLeft = layout.textX * zoom
-  const inputWidth = Math.max(layout.width * zoom + 16, 32)
+  const spaceCount = (object.text.match(/\s/g) || []).length
+  const totalTextWidth = layout.width + (layout.wordSpacing || 0) * spaceCount
+  const inputWidth = Math.max(totalTextWidth * zoom + 16, 32)
 
   const fontCss =
     activeFamily === 'devanagari'
@@ -187,6 +202,7 @@ function TextView({ object, zoom }: { object: TextObject; zoom: number }) {
               color: object.color,
               fontWeight: object.bold ? 'bold' : 'normal',
               fontStyle: object.italic ? 'italic' : 'normal',
+              wordSpacing: layout.wordSpacing ? `${layout.wordSpacing * zoom}px` : undefined,
               height: `${elementHeight}px`,
               lineHeight: `${elementHeight}px`,
               width: `${inputWidth}px`,
@@ -201,6 +217,7 @@ function TextView({ object, zoom }: { object: TextObject; zoom: number }) {
               color: object.color,
               fontWeight: object.bold ? 'bold' : 'normal',
               fontStyle: object.italic ? 'italic' : 'normal',
+              wordSpacing: layout.wordSpacing ? `${layout.wordSpacing * zoom}px` : undefined,
               whiteSpace: 'pre',
               overflow: 'visible',
               height: `${elementHeight}px`,
