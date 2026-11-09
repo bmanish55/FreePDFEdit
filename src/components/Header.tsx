@@ -1,4 +1,4 @@
-import { Download, FileText } from 'lucide-react'
+import { Download, FileText, MessageSquareHeart } from 'lucide-react'
 import Button from './ui/Button'
 import { usePdfStore } from '../store/usePdfStore'
 
@@ -9,6 +9,7 @@ type HeaderProps = {
 
 export default function Header({ onDownload, hasPdf = false }: HeaderProps) {
   const fileName = usePdfStore((state) => state.fileName)
+  const setFeedbackModalOpen = usePdfStore((state) => state.setFeedbackModalOpen)
 
   return (
     <header className="sticky top-0 z-30 h-14 border-b border-slate-200 bg-white/80 backdrop-blur">
@@ -34,16 +35,30 @@ export default function Header({ onDownload, hasPdf = false }: HeaderProps) {
           )}
         </div>
 
-        <Button
-          variant="primary"
-          disabled={!hasPdf}
-          onClick={onDownload}
-          icon={<Download size={18} strokeWidth={2} />}
-          aria-label="Download PDF"
-          title="Download PDF"
-        >
-          <span className="hidden sm:inline">Download</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setFeedbackModalOpen(true)}
+            icon={<MessageSquareHeart size={16} strokeWidth={2} className="text-brand-600" />}
+            aria-label="Give Feedback"
+            title="Give Feedback"
+            className="text-xs font-medium text-slate-700 hover:text-brand-700"
+          >
+            <span className="hidden sm:inline">Feedback</span>
+          </Button>
+
+          <Button
+            variant="primary"
+            disabled={!hasPdf}
+            onClick={onDownload}
+            icon={<Download size={18} strokeWidth={2} />}
+            aria-label="Download PDF"
+            title="Download PDF"
+          >
+            <span className="hidden sm:inline">Download</span>
+          </Button>
+        </div>
       </div>
     </header>
   )
