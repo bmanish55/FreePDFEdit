@@ -79,6 +79,9 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
     }
   }, [document, isNearViewport, pageNumber, zoom])
 
+  const textTouchStart = useRef<{ x: number; y: number; time: number } | null>(null)
+  const overlayTouchStart = useRef<{ x: number; y: number; time: number } | null>(null)
+
   const handleOverlayPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (activeTool === 'whiteout' || activeTool === 'highlight') {
       const bounds = event.currentTarget.getBoundingClientRect()
@@ -87,27 +90,17 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
       event.currentTarget.setPointerCapture(event.pointerId)
       return
     }
-    if (activeTool !== 'addText') {
-      selectObject(null)
+
+    if (activeTool === 'addText') {
+      overlayTouchStart.current = {
+        x: event.clientX,
+        y: event.clientY,
+        time: Date.now(),
+      }
       return
     }
 
-    const bounds = event.currentTarget.getBoundingClientRect()
-    const point = screenToPdf({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, zoom)
-    addObject({
-      id: crypto.randomUUID(),
-      type: 'text',
-      page: pageNumber,
-      x: point.x,
-      baselineY: point.y + 14,
-      text: '',
-      fontFamily: 'arimo',
-      bold: false,
-      italic: false,
-      fontSize: 14,
-      color: '#000000',
-      original: null,
-    })
+    selectObject(null)
   }
 
   const handleOverlayPointerMove = (event: PointerEvent<HTMLDivElement>) => {
@@ -123,20 +116,78 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
   }
 
   const handleOverlayPointerUp = (event: PointerEvent<HTMLDivElement>) => {
-    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
-    event.currentTarget.releasePointerCapture(event.pointerId)
-    if (!drawPreview || drawPreview.width < 5 || drawPreview.height < 5) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+
+    if (activeTool === 'whiteout' || activeTool === 'highlight') {
+      const minDimension = event.pointerType === 'touch' ? 12 : 5
+      if (!drawPreview || drawPreview.width < minDimension || drawPreview.height < minDimension) {
+        setDrawPreview(null)
+        return
+      }
+      addObject({ id: crypto.randomUUID(), type: activeTool, page: pageNumber, ...drawPreview })
       setDrawPreview(null)
       return
     }
-    if (activeTool === 'whiteout' || activeTool === 'highlight') {
-      addObject({ id: crypto.randomUUID(), type: activeTool, page: pageNumber, ...drawPreview })
+
+    if (activeTool === 'addText' && overlayTouchStart.current) {
+      const dx = event.clientX - overlayTouchStart.current.x
+      const dy = event.clientY - overlayTouchStart.current.y
+      const distance = Math.hypot(dx, dy)
+      const duration = Date.now() - overlayTouchStart.current.time
+      overlayTouchStart.current = null
+
+      // Only add text on clean tap, not on swipe/scroll
+      if (distance < 14 && duration < 500) {
+        const bounds = event.currentTarget.getBoundingClientRect()
+        const point = screenToPdf({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, zoom)
+        addObject({
+          id: crypto.randomUUID(),
+          type: 'text',
+          page: pageNumber,
+          x: point.x,
+          baselineY: point.y + 14,
+          text: '',
+          fontFamily: 'arimo',
+          bold: false,
+          italic: false,
+          fontSize: 14,
+          color: '#000000',
+          original: null,
+        })
+      }
     }
-    setDrawPreview(null)
   }
 
-  const handleExistingText = (event: PointerEvent<HTMLDivElement>, run: TextRun) => {
+  const handleTextPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    textTouchStart.current = {
+      x: event.clientX,
+      y: event.clientY,
+      time: Date.now(),
+    }
+  }
+
+  const handleTextPointerUp = (event: PointerEvent<HTMLDivElement>, run: TextRun) => {
+    if (activeTool !== 'select') return
+    if (!textTouchStart.current) return
+    const dx = event.clientX - textTouchStart.current.x
+    const dy = event.clientY - textTouchStart.current.y
+    const distance = Math.hypot(dx, dy)
+    const duration = Date.now() - textTouchStart.current.time
+    textTouchStart.current = null
+
+    // Distinguish clean tap from finger scroll/swipe gesture on mobile touch screens
+    const maxDistance = event.pointerType === 'touch' ? 14 : 6
+    if (distance > maxDistance || duration > 500) {
+      return // Finger was scrolling the page, ignore text selection!
+    }
+
     event.stopPropagation()
+    handleExistingText(run)
+  }
+
+  const handleExistingText = (run: TextRun) => {
     if (activeTool !== 'select') return
     const existing = objects.find((object) => object.type === 'text' && object.originalKey === run.key)
     if (existing) {
@@ -174,7 +225,7 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
         {dimensions.width > 0 && (
           <div
             className="absolute inset-0"
-            style={{ touchAction: activeTool === 'select' ? 'auto' : 'none' }}
+            style={{ touchAction: activeTool === 'select' ? 'pan-x pan-y' : 'none' }}
             onPointerDown={handleOverlayPointerDown}
             onPointerMove={handleOverlayPointerMove}
             onPointerUp={handleOverlayPointerUp}
@@ -193,7 +244,8 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
                       height: (run.fontSize * 1.15) * zoom,
                     }}
                     aria-label={`Edit text: ${run.text}`}
-                    onPointerDown={(event) => handleExistingText(event, run)}
+                    onPointerDown={handleTextPointerDown}
+                    onPointerUp={(event) => handleTextPointerUp(event, run)}
                   />
                 ))}
             {objects.map((object) => (

@@ -123,7 +123,7 @@ export default function App() {
             {/* Workspace */}
             <div className="mx-auto flex max-w-7xl gap-6 px-4 py-6">
               {/* Left (main) column */}
-              <div className="min-w-0 flex-1 overflow-x-auto">
+              <div className="min-w-0 flex-1 overflow-x-auto [touch-action:pan-x_pan-y] [-webkit-overflow-scrolling:touch]">
                 {isLoading && (
                   <p role="status" className="mb-4 text-center text-sm text-slate-600">
                     Loading PDF...

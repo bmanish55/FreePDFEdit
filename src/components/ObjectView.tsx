@@ -89,9 +89,19 @@ function TextView({ object, zoom }: { object: TextObject; zoom: number }) {
     }
   }, [editing])
 
+  const isOriginalPdfText = object.original !== null
+
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
     event.stopPropagation()
     selectObject(object.id)
+    // Anchored PDF text lines are locked in place to avoid misplacing over whiteout covers
+    if (isOriginalPdfText) {
+      if (!editing) {
+        initialText.current = object.text
+        setEditing(true)
+      }
+      return
+    }
     if (editing) return
     hasMoved.current = false
     dragStart.current = { x: event.clientX, y: event.clientY }
@@ -101,12 +111,17 @@ function TextView({ object, zoom }: { object: TextObject; zoom: number }) {
   }
 
   const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (isOriginalPdfText) return
     if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
-    const dx = (event.clientX - dragStart.current.x) / zoom
-    const dy = (event.clientY - dragStart.current.y) / zoom
-    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
-      hasMoved.current = true
+    const screenDx = event.clientX - dragStart.current.x
+    const screenDy = event.clientY - dragStart.current.y
+    const threshold = event.pointerType === 'touch' ? 16 : 3
+    if (Math.hypot(screenDx, screenDy) < threshold && !hasMoved.current) {
+      return
     }
+    hasMoved.current = true
+    const dx = screenDx / zoom
+    const dy = screenDy / zoom
     updateObject(
       object.id,
       {
@@ -249,9 +264,12 @@ export default function ObjectView({ object, zoom }: ObjectViewProps) {
 
   const position = pdfToScreen(object, zoom)
 
+  const hasMovedShape = useRef(false)
+
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
     event.stopPropagation()
     selectObject(object.id)
+    hasMovedShape.current = false
     dragStart.current = { x: event.clientX, y: event.clientY }
     objectStart.current = { x: object.x, y: object.y }
     beginHistory()
@@ -260,8 +278,15 @@ export default function ObjectView({ object, zoom }: ObjectViewProps) {
 
   const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
     if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
-    const dx = (event.clientX - dragStart.current.x) / zoom
-    const dy = (event.clientY - dragStart.current.y) / zoom
+    const screenDx = event.clientX - dragStart.current.x
+    const screenDy = event.clientY - dragStart.current.y
+    const threshold = event.pointerType === 'touch' ? 16 : 3
+    if (Math.hypot(screenDx, screenDy) < threshold && !hasMovedShape.current) {
+      return
+    }
+    hasMovedShape.current = true
+    const dx = screenDx / zoom
+    const dy = screenDy / zoom
     updateObject(
       object.id,
       {
