@@ -93,7 +93,7 @@ export async function sendOtpToUser(
 
 /**
  * Submits verified feedback directly to your inbox via FormSubmit / serverless route.
- * The destination email is never displayed in the UI.
+ * Attaches the user's mobile number or email prominently so you can easily revert/reply!
  */
 export async function submitFeedback(payload: FeedbackPayload): Promise<{ success: boolean; message: string; needsActivation?: boolean }> {
   const recipient = getRecipientEmail()
@@ -105,7 +105,26 @@ export async function submitFeedback(payload: FeedbackPayload): Promise<{ succes
     timestamp: new Date().toISOString(),
   }
 
-  const emailSubject = `[FreePDFEdit Feedback] [${payload.category}] ${payload.title || 'User Feedback'}`
+  const isEmail = payload.contactType === 'email'
+  const emailSubject = `[FreePDFEdit Feedback] [${payload.category}] from ${payload.contactValue}`
+
+  // Structured payload with user contact at top priority
+  const formPayload: Record<string, string | undefined> = {
+    _subject: emailSubject,
+    _template: 'table',
+    _captcha: 'false',
+    _replyto: isEmail ? payload.contactValue : undefined,
+    'User Contact (Reply To)': payload.contactValue,
+    'Contact Method': isEmail ? 'Email Address' : 'Mobile Number (SMS/WhatsApp/Call)',
+    'How To Revert': isEmail
+      ? `Click "Reply" to respond directly to ${payload.contactValue}`
+      : `Call or message via WhatsApp/SMS at ${payload.contactValue}`,
+    'Feedback Category': payload.category,
+    'Feedback Title': payload.title || payload.category,
+    'Feedback Description': payload.description,
+    'Screen & System': `${diagnostics.screenResolution} • ${diagnostics.platform}`,
+    'Submission Time': new Date().toLocaleString(),
+  }
 
   // 1. Try local serverless endpoint /api/feedback if deployed on Vercel/Node
   try {
@@ -116,6 +135,7 @@ export async function submitFeedback(payload: FeedbackPayload): Promise<{ succes
         ...payload,
         recipient,
         diagnostics,
+        formPayload,
       }),
     }).catch(() => null)
 
@@ -131,7 +151,6 @@ export async function submitFeedback(payload: FeedbackPayload): Promise<{ succes
 
   // 2. Submit directly via FormSubmit AJAX service
   try {
-    // FormSubmit endpoint: uses token if configured, else recipient email
     const endpointToken = import.meta.env?.VITE_FORMSUBMIT_TOKEN
     const formSubmitUrl = endpointToken
       ? `https://formsubmit.co/ajax/${endpointToken}`
@@ -143,20 +162,7 @@ export async function submitFeedback(payload: FeedbackPayload): Promise<{ succes
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
-      body: JSON.stringify({
-        _subject: emailSubject,
-        _template: 'table',
-        _captcha: 'false',
-        _replyto: payload.contactType === 'email' ? payload.contactValue : undefined,
-        Category: payload.category,
-        Title: payload.title || payload.category,
-        VerifiedContact: `${payload.contactValue} (${payload.contactType.toUpperCase()})`,
-        Description: payload.description,
-        ScreenResolution: diagnostics.screenResolution,
-        Platform: diagnostics.platform,
-        Browser: diagnostics.userAgent,
-        SubmissionDate: diagnostics.timestamp,
-      }),
+      body: JSON.stringify(formPayload),
     })
 
     const data = await formSubmitRes.json().catch(() => null)
@@ -166,12 +172,11 @@ export async function submitFeedback(payload: FeedbackPayload): Promise<{ succes
         return { success: true, message: 'Thank you! Your feedback has been delivered to your email inbox.' }
       }
 
-      // Check if FormSubmit activation is pending
       if (typeof data.message === 'string' && data.message.toLowerCase().includes('activation')) {
         return {
           success: true,
           needsActivation: true,
-          message: 'Activation email sent! Please check your inbox (and Spam folder) to click "Activate Form" once.',
+          message: 'Activation email sent! Please check your Gmail (including Spam folder) and click "Activate Form" once.',
         }
       }
     }
@@ -179,13 +184,13 @@ export async function submitFeedback(payload: FeedbackPayload): Promise<{ succes
     console.warn('FormSubmit dispatch issue:', err)
   }
 
-  // 3. Fallback queue in localStorage so feedback is never lost
+  // 3. Fallback queue in localStorage
   try {
     const queue = JSON.parse(localStorage.getItem('fpe_feedback_queue') || '[]')
     queue.push({ ...payload, timestamp: new Date().toISOString() })
     localStorage.setItem('fpe_feedback_queue', JSON.stringify(queue))
   } catch {
-    // Local storage best-effort
+    // Local storage fallback
   }
 
   return {

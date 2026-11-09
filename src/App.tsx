@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { AlertTriangle, Sparkles, MessageSquareHeart } from 'lucide-react'
+import { AlertTriangle, Sparkles } from 'lucide-react'
 import AdSlot from './components/AdSlot'
 import DesktopNotice from './components/DesktopNotice'
 import FeedbackModal from './components/FeedbackModal'
@@ -157,17 +157,6 @@ export default function App() {
         )}
       </main>
       <Footer />
-
-      {/* Floating feedback pill */}
-      <button
-        onClick={() => setFeedbackModalOpen(true)}
-        className="fixed bottom-4 right-4 z-20 flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-md backdrop-blur hover:bg-slate-50 hover:text-brand-600 transition-all cursor-pointer"
-        aria-label="Send Feedback"
-        title="Send Feedback"
-      >
-        <MessageSquareHeart size={14} className="text-brand-600" />
-        <span>Feedback</span>
-      </button>
 
       {/* Feedback Modal */}
       <FeedbackModal
