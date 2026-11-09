@@ -14,11 +14,10 @@ import {
 } from 'lucide-react'
 import Button from './ui/Button'
 import {
-  validateContact,
+  validateEmail,
   generateOtp,
   sendOtpToUser,
   submitFeedback,
-  type ContactType,
 } from '../lib/feedback/feedbackService'
 
 type FeedbackModalProps = {
@@ -36,13 +35,12 @@ const CATEGORIES = [
 ]
 
 export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
-  // Wizard state: 1 = Contact & OTP, 2 = Feedback form, 3 = Success
+  // Wizard state: 1 = Email & OTP, 2 = Feedback form, 3 = Success
   const [step, setStep] = useState<1 | 2 | 3>(1)
 
-  // Step 1: Contact & OTP
-  const [contactType, setContactType] = useState<ContactType>('email')
-  const [contactValue, setContactValue] = useState('')
-  const [contactError, setContactError] = useState('')
+  // Step 1: Email & OTP Verification
+  const [email, setEmail] = useState('')
+  const [emailError, setEmailError] = useState('')
   const [otpSent, setOtpSent] = useState(false)
   const [generatedOtp, setGeneratedOtp] = useState('')
   const [enteredOtp, setEnteredOtp] = useState('')
@@ -51,7 +49,8 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
   const [isSendingOtp, setIsSendingOtp] = useState(false)
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false)
 
-  // Step 2: Feedback Details
+  // Step 2: Feedback Details & Optional Mobile
+  const [phone, setPhone] = useState('')
   const [category, setCategory] = useState(CATEGORIES[0].value)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -76,12 +75,13 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
   useEffect(() => {
     if (isOpen) {
       setStep(1)
-      setContactValue('')
-      setContactError('')
+      setEmail('')
+      setEmailError('')
       setOtpSent(false)
       setEnteredOtp('')
       setOtpError('')
       setCountdown(60)
+      setPhone('')
       setTitle('')
       setDescription('')
       setDetailsError('')
@@ -91,18 +91,18 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
   if (!isOpen) return null
 
   const handleSendOtp = async () => {
-    const validation = validateContact(contactType, contactValue)
+    const validation = validateEmail(email)
     if (!validation.isValid) {
-      setContactError(validation.error || 'Invalid contact value')
+      setEmailError(validation.error || 'Please enter a valid email address')
       return
     }
-    setContactError('')
+    setEmailError('')
     setIsSendingOtp(true)
 
     const code = generateOtp()
     setGeneratedOtp(code)
 
-    await sendOtpToUser(contactType, contactValue.trim(), code)
+    await sendOtpToUser(email.trim(), code)
     setIsSendingOtp(false)
     setOtpSent(true)
     setCountdown(60)
@@ -111,7 +111,7 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
 
   const handleVerifyOtp = () => {
     if (!enteredOtp || enteredOtp.trim().length < 6) {
-      setOtpError('Please enter the 6-digit OTP code.')
+      setOtpError('Please enter the 6-digit code received on your email.')
       return
     }
     setIsVerifyingOtp(true)
@@ -129,15 +129,15 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
 
   const handleSubmit = async () => {
     if (!description.trim()) {
-      setDetailsError('Please enter a description for your feedback.')
+      setDetailsError('Please describe your feedback or suggestions.')
       return
     }
     setDetailsError('')
     setIsSubmitting(true)
 
     const res = await submitFeedback({
-      contactType,
-      contactValue: contactValue.trim(),
+      email: email.trim(),
+      phone: phone.trim() || undefined,
       category,
       title: title.trim() || category,
       description: description.trim(),
@@ -190,80 +190,47 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
           </button>
         </div>
 
-        {/* STEP 1: Contact & OTP Verification */}
+        {/* STEP 1: Email & OTP Verification */}
         {step === 1 && (
           <div className="mt-4 sm:mt-5 space-y-4">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
               <div className="flex items-center gap-1.5 font-medium text-slate-800 mb-1">
                 <ShieldCheck size={16} className="text-brand-600 shrink-0" />
-                <span>Verification Required</span>
+                <span>Email Verification Required</span>
               </div>
               <p className="leading-relaxed">
-                Please enter your email or mobile number. We will send you a one-time verification code to verify your contact so we can respond to your feedback.
+                Please enter your email address. We will send you a 6-digit one-time code to verify your contact so we can follow up on your feedback.
               </p>
             </div>
 
-            {/* Contact Type Toggle */}
-            <div className="flex rounded-lg bg-slate-100 p-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setContactType('email')
-                  setContactError('')
-                  setOtpSent(false)
-                }}
-                className={`flex-1 flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-medium transition-all ${
-                  contactType === 'email'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Mail size={14} />
-                <span>Email Address</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setContactType('phone')
-                  setContactError('')
-                  setOtpSent(false)
-                }}
-                className={`flex-1 flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-medium transition-all ${
-                  contactType === 'phone'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Phone size={14} />
-                <span>Mobile Number</span>
-              </button>
-            </div>
-
-            {/* Contact Input with Responsive Button */}
+            {/* Email Input with Responsive Button */}
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">
-                {contactType === 'email' ? 'Your Email Address' : 'Your Mobile Number'}
+                Your Email Address <span className="text-red-500">*</span>
               </label>
               <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  type={contactType === 'email' ? 'email' : 'tel'}
-                  value={contactValue}
-                  disabled={otpSent}
-                  onChange={(e) => {
-                    setContactValue(e.target.value)
-                    setContactError('')
-                  }}
-                  placeholder={
-                    contactType === 'email' ? 'e.g. name@company.com' : 'e.g. +91 9876543210'
-                  }
-                  className="w-full sm:flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:bg-slate-100 disabled:text-slate-500"
-                />
+                <div className="relative flex-1">
+                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+                    <Mail size={16} />
+                  </div>
+                  <input
+                    type="email"
+                    value={email}
+                    disabled={otpSent}
+                    onChange={(e) => {
+                      setEmail(e.target.value)
+                      setEmailError('')
+                    }}
+                    placeholder="name@company.com"
+                    className="w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 py-2 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:bg-slate-100 disabled:text-slate-500"
+                  />
+                </div>
                 {!otpSent ? (
                   <Button
                     variant="primary"
                     size="sm"
                     onClick={() => void handleSendOtp()}
-                    disabled={isSendingOtp || !contactValue.trim()}
+                    disabled={isSendingOtp || !email.trim()}
                     className="w-full sm:w-auto shrink-0 justify-center whitespace-nowrap"
                   >
                     {isSendingOtp ? (
@@ -286,14 +253,14 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
                   </Button>
                 )}
               </div>
-              {contactError && <p className="mt-1.5 text-xs text-red-600">{contactError}</p>}
+              {emailError && <p className="mt-1.5 text-xs text-red-600">{emailError}</p>}
             </div>
 
             {/* OTP Input Block - Fully Responsive on Mobile */}
             {otpSent && (
               <div className="rounded-xl border border-brand-200 bg-brand-50/40 p-3 sm:p-4 space-y-3">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-slate-800">Enter 6-Digit OTP</span>
+                  <span className="font-semibold text-slate-800">Enter 6-Digit Code</span>
                   <span className="inline-flex items-center gap-1 text-slate-500">
                     <Clock size={12} />
                     {countdown > 0 ? (
@@ -304,7 +271,7 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
                         onClick={() => void handleSendOtp()}
                         className="text-brand-600 font-semibold hover:underline"
                       >
-                        Resend OTP
+                        Resend Code
                       </button>
                     )}
                   </span>
@@ -312,7 +279,7 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
 
                 <p className="text-xs text-slate-600 leading-relaxed">
                   We have dispatched a 6-digit verification code to{' '}
-                  <strong className="text-slate-800 break-all">{contactValue}</strong>. Please check your inbox (including spam) and enter it below.
+                  <strong className="text-slate-800 break-all">{email}</strong>. Please check your inbox (including spam folder) and enter it below.
                 </p>
 
                 <div className="flex flex-col sm:flex-row gap-2">
@@ -326,7 +293,7 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
                       setEnteredOtp(e.target.value.replace(/\D/g, ''))
                       setOtpError('')
                     }}
-                    placeholder="Enter 6-digit OTP"
+                    placeholder="Enter 6-digit code"
                     className="w-full sm:flex-1 tracking-widest text-center font-mono text-base sm:text-lg font-bold rounded-lg border border-slate-300 bg-white py-2 px-3 text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                   />
                   <Button
@@ -352,14 +319,14 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
           </div>
         )}
 
-        {/* STEP 2: Feedback Details */}
+        {/* STEP 2: Feedback Details & Optional Mobile */}
         {step === 2 && (
           <div className="mt-4 sm:mt-5 space-y-4">
-            {/* Verified Contact Pill */}
+            {/* Verified Email Banner */}
             <div className="flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2 border border-emerald-200 text-xs">
               <span className="inline-flex items-center gap-1.5 font-medium text-emerald-800 truncate">
                 <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
-                <span className="truncate">Verified: {contactValue}</span>
+                <span className="truncate">Verified: {email}</span>
               </span>
               <span className="text-[10px] sm:text-[11px] text-emerald-600 uppercase font-semibold shrink-0">Verified</span>
             </div>
@@ -392,6 +359,23 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g. Text spacing issue on academic PDF"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+              />
+            </div>
+
+            {/* Optional Mobile / WhatsApp Number */}
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-xs font-medium text-slate-700 flex items-center gap-1">
+                  <Phone size={13} className="text-slate-500" />
+                  <span>Mobile / WhatsApp Number <span className="text-slate-400 font-normal">(Optional)</span></span>
+                </label>
+              </div>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="e.g. +91 9876543210 (if you prefer a call or WhatsApp follow-up)"
                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
               />
             </div>
@@ -444,7 +428,7 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
           </div>
         )}
 
-        {/* STEP 3: Professional Success Screen - No Activation Mentions */}
+        {/* STEP 3: Professional Success Screen */}
         {step === 3 && (
           <div className="py-6 sm:py-8 text-center space-y-4">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">

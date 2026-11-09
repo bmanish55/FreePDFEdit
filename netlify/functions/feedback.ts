@@ -6,9 +6,23 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const { contactType, contactValue, category, title, description, diagnostics, formPayload } = req.body || {}
+  const {
+    email,
+    phone,
+    contactType,
+    contactValue,
+    category,
+    title,
+    description,
+    diagnostics,
+    formPayload,
+  } = req.body || {}
 
-  if (!contactValue || !description) {
+  const userEmail = email || (contactType === 'email' ? contactValue : undefined)
+  const userPhone = phone || (contactType === 'phone' ? contactValue : undefined)
+  const contact = userEmail || contactValue || userPhone
+
+  if (!contact || !description) {
     return res.status(400).json({ error: 'Missing required feedback fields' })
   }
 
@@ -19,21 +33,20 @@ export default async function handler(req: any, res: any) {
       109, 97, 105, 108, 46, 99, 111, 109,
     )
 
-  const isEmail = contactType === 'email'
-  const subject = `[FreePDFEdit Feedback] [${category || 'General'}] from ${contactValue}`
+  const subject = `[FreePDFEdit Feedback] [${category || 'General'}] from ${userEmail || contact}`
 
   const payloadToSend = formPayload || {
     _subject: subject,
     _template: 'table',
     _captcha: 'false',
-    _replyto: isEmail ? contactValue : undefined,
-    'User Contact (Reply To)': contactValue,
-    'Contact Method': isEmail ? 'Email Address' : 'Mobile Number',
-    'How To Revert': isEmail
-      ? `Click "Reply" to respond directly to ${contactValue}`
-      : `Call or message via WhatsApp/SMS at ${contactValue}`,
-    'Feedback Category': category,
-    'Feedback Title': title,
+    _replyto: userEmail || undefined,
+    'Verified User Email (Reply To)': userEmail || 'Not provided',
+    'Mobile / WhatsApp (Optional)': userPhone || 'Not provided',
+    'How To Revert': userPhone
+      ? `Click "Reply" to email ${userEmail}, or call/WhatsApp at ${userPhone}`
+      : `Click "Reply" to respond directly to ${userEmail}`,
+    'Feedback Category': category || 'General',
+    'Feedback Title': title || category || 'General Feedback',
     'Feedback Description': description,
     Diagnostics: diagnostics,
   }
@@ -43,7 +56,7 @@ export default async function handler(req: any, res: any) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
       body: JSON.stringify(payloadToSend),
     })

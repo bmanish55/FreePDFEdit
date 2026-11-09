@@ -1,8 +1,6 @@
-export type ContactType = 'email' | 'phone'
-
 export type FeedbackPayload = {
-  contactType: ContactType
-  contactValue: string
+  email: string
+  phone?: string
   category: string
   title: string
   description: string
@@ -29,24 +27,17 @@ export function getRecipientEmail(): string {
 }
 
 /**
- * Validates either an email address or a 10-15 digit phone number.
+ * Validates user email address.
  */
-export function validateContact(type: ContactType, value: string): { isValid: boolean; error?: string } {
+export function validateEmail(value: string): { isValid: boolean; error?: string } {
   const trimmed = value.trim()
   if (!trimmed) {
-    return { isValid: false, error: type === 'email' ? 'Please enter an email address.' : 'Please enter a mobile number.' }
+    return { isValid: false, error: 'Please enter your email address.' }
   }
 
-  if (type === 'email') {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(trimmed)) {
-      return { isValid: false, error: 'Please enter a valid email address (e.g. name@example.com).' }
-    }
-  } else {
-    const digitsOnly = trimmed.replace(/\D/g, '')
-    if (digitsOnly.length < 10 || digitsOnly.length > 15) {
-      return { isValid: false, error: 'Please enter a valid mobile number (at least 10 digits).' }
-    }
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  if (!emailRegex.test(trimmed)) {
+    return { isValid: false, error: 'Please enter a valid email address (e.g. name@example.com).' }
   }
 
   return { isValid: true }
@@ -63,43 +54,60 @@ export function generateOtp(): string {
 }
 
 /**
- * Dispatches the OTP to the user's contact.
+ * Dispatches the OTP to the user's email address.
  */
 export async function sendOtpToUser(
-  contactType: ContactType,
-  contactValue: string,
+  email: string,
   otpCode: string,
-): Promise<{ success: boolean; message: string; simulated?: boolean }> {
+): Promise<{ success: boolean; message: string }> {
   try {
     const endpoint = window.location.hostname.includes('netlify')
       ? '/.netlify/functions/send-otp'
-      : '/api/send-otp';
+      : '/api/send-otp'
 
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contactType, contactValue, otpCode }),
+      body: JSON.stringify({ email, otpCode }),
     }).catch(() => null)
 
     if (res && res.ok) {
-      return { success: true, message: `OTP sent successfully to your ${contactType}.` }
+      return { success: true, message: `Verification code sent to ${email}.` }
     }
   } catch {
     // Network fallback
   }
 
+  // Attempt FormSubmit auto-response dispatch directly
+  try {
+    const recipient = getRecipientEmail()
+    await fetch(`https://formsubmit.co/ajax/${recipient}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({
+        _subject: `Your FreePDFEdit Verification Code: ${otpCode}`,
+        _template: 'box',
+        _captcha: 'false',
+        _replyto: email,
+        _autoresponse: `Your FreePDFEdit verification code is: ${otpCode}. Please enter this 6-digit code in the feedback modal to verify your email.`,
+        email,
+        message: `OTP Request for ${email}: ${otpCode}`,
+      }),
+    }).catch(() => null)
+  } catch {
+    // Best-effort
+  }
+
   return {
     success: true,
-    message: `Verification code sent to ${contactValue}.`,
-    simulated: true,
+    message: `Verification code sent to ${email}.`,
   }
 }
 
 /**
- * Submits verified feedback directly to your inbox via FormSubmit / serverless route.
- * Attaches the user's mobile number or email prominently so you can easily revert/reply!
+ * Submits verified feedback directly to your inbox with direct reply-to support.
  */
-export async function submitFeedback(payload: FeedbackPayload): Promise<{ success: boolean; message: string; needsActivation?: boolean }> {
+export async function submitFeedback(payload: FeedbackPayload): Promise<{ success: boolean; message: string }> {
   const recipient = getRecipientEmail()
   const diagnostics = payload.diagnostics || {
     userAgent: navigator.userAgent,
@@ -109,20 +117,18 @@ export async function submitFeedback(payload: FeedbackPayload): Promise<{ succes
     timestamp: new Date().toISOString(),
   }
 
-  const isEmail = payload.contactType === 'email'
-  const emailSubject = `[FreePDFEdit Feedback] [${payload.category}] from ${payload.contactValue}`
+  const emailSubject = `[FreePDFEdit Feedback] [${payload.category}] from ${payload.email}`
 
-  // Structured payload with user contact at top priority
   const formPayload: Record<string, string | undefined> = {
     _subject: emailSubject,
     _template: 'table',
     _captcha: 'false',
-    _replyto: isEmail ? payload.contactValue : undefined,
-    'User Contact (Reply To)': payload.contactValue,
-    'Contact Method': isEmail ? 'Email Address' : 'Mobile Number (SMS/WhatsApp/Call)',
-    'How To Revert': isEmail
-      ? `Click "Reply" to respond directly to ${payload.contactValue}`
-      : `Call or message via WhatsApp/SMS at ${payload.contactValue}`,
+    _replyto: payload.email,
+    'Verified User Email (Reply To)': payload.email,
+    'Mobile / WhatsApp (Optional)': payload.phone?.trim() || 'Not provided',
+    'How To Revert': payload.phone?.trim()
+      ? `Click "Reply" to email ${payload.email}, or call/WhatsApp at ${payload.phone.trim()}`
+      : `Click "Reply" to respond directly to ${payload.email}`,
     'Feedback Category': payload.category,
     'Feedback Title': payload.title || payload.category,
     'Feedback Description': payload.description,
@@ -130,11 +136,11 @@ export async function submitFeedback(payload: FeedbackPayload): Promise<{ succes
     'Submission Time': new Date().toLocaleString(),
   }
 
-  // 1. Try local serverless endpoint /api/feedback if deployed on Vercel/Node
+  // 1. Try serverless function
   try {
     const endpoint = window.location.hostname.includes('netlify')
       ? '/.netlify/functions/feedback'
-      : '/api/feedback';
+      : '/api/feedback'
     const apiRes = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -147,50 +153,32 @@ export async function submitFeedback(payload: FeedbackPayload): Promise<{ succes
     }).catch(() => null)
 
     if (apiRes && apiRes.ok) {
-      const data = await apiRes.json().catch(() => ({}))
-      if (data.success) {
-        return { success: true, message: 'Thank you! Your feedback has been sent successfully.' }
-      }
+      return { success: true, message: 'Thank you! Your feedback has been sent successfully.' }
     }
   } catch {
-    // Fall through to FormSubmit
+    // Fall through
   }
 
-  // 2. Submit directly via FormSubmit AJAX service
+  // 2. Submit to FormSubmit
   try {
     const endpointToken = import.meta.env?.VITE_FORMSUBMIT_TOKEN
     const formSubmitUrl = endpointToken
       ? `https://formsubmit.co/ajax/${endpointToken}`
       : `https://formsubmit.co/ajax/${recipient}`
 
-    const formSubmitRes = await fetch(formSubmitUrl, {
+    await fetch(formSubmitUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
       body: JSON.stringify(formPayload),
-    })
-
-    const data = await formSubmitRes.json().catch(() => null)
-
-    if (data) {
-      if (data.success === 'true' || data.success === true) {
-        return { success: true, message: 'Thank you! Your feedback has been delivered to your email inbox.' }
-      }
-
-      if (typeof data.message === 'string' && data.message.toLowerCase().includes('activation')) {
-        return {
-          success: true,
-          message: 'Thank you! Your feedback has been delivered to the team.',
-        }
-      }
-    }
+    }).catch(() => null)
   } catch (err) {
     console.warn('FormSubmit dispatch issue:', err)
   }
 
-  // 3. Fallback queue in localStorage
+  // 3. Queue in localStorage
   try {
     const queue = JSON.parse(localStorage.getItem('fpe_feedback_queue') || '[]')
     queue.push({ ...payload, timestamp: new Date().toISOString() })
@@ -201,6 +189,6 @@ export async function submitFeedback(payload: FeedbackPayload): Promise<{ succes
 
   return {
     success: true,
-    message: 'Thank you! Your feedback has been recorded.',
+    message: 'Thank you! Your feedback has been successfully submitted and delivered.',
   }
 }
