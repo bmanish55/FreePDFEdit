@@ -24,9 +24,9 @@ export default function AdSlot({ position }: AdSlotProps) {
   return (
     <aside
       aria-label={`${position} advertisement placeholder`}
-      className={`items-center justify-center border border-dashed border-slate-300 bg-white text-sm text-slate-400 ${positionStyles[position]}`}
+      className={`flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-400 ${positionStyles[position]}`}
     >
-      Ad space
+      Advertisement
     </aside>
   )
 }

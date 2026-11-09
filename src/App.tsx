@@ -1,12 +1,15 @@
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import { AlertTriangle } from 'lucide-react'
 import AdSlot from './components/AdSlot'
 import DesktopNotice from './components/DesktopNotice'
+import Footer from './components/Footer'
 import Header from './components/Header'
+import LandingView from './components/LandingView'
 import PdfPage from './components/PdfPage'
 import Toolbar from './components/Toolbar'
-import UploadZone from './components/UploadZone'
+import Notice from './components/ui/Notice'
 import { exportPdf } from './lib/exportPdf'
 import { usePdfStore } from './store/usePdfStore'
 
@@ -71,45 +74,76 @@ export default function App() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="flex min-h-screen flex-col bg-slate-50">
       <DesktopNotice />
       <Header onDownload={() => void handleDownload()} hasPdf={Boolean(pdfBytes)} />
-      <main>
-        <div className="px-4 py-4 sm:px-6">
-          <AdSlot position="top" />
-        </div>
-        <div className="sticky top-0 z-10 border-y border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-6">
-          <nav aria-label="PDF editing tools" className="mx-auto flex max-w-6xl flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold text-slate-700">PDF tools</span>
+      <main className="flex-1">
+        {!pdfBytes || !pdfDocument ? (
+          <LandingView
+            onFile={(file) => void handleFile(file)}
+            error={error}
+            isLoading={isLoading}
+          />
+        ) : (
+          <div className="min-h-full bg-slate-100">
             <Toolbar />
-            <span className="text-sm text-slate-500">Edited text matches original font.</span>
-          </nav>
-          {textWarning && (
-            <p role="alert" className="mx-auto mt-1 max-w-6xl text-xs font-medium text-red-600">
-              {textWarning}
-            </p>
-          )}
-        </div>
-        <div className="mx-auto flex max-w-[1540px] gap-8 px-4 py-8 sm:px-6 lg:py-10">
-          <section aria-label="PDF workspace" className="min-w-0 flex-1">
-            {error && <p role="alert" className="mb-4 text-center text-sm text-red-600">{error}</p>}
-            {isLoading && <p role="status" className="mb-4 text-center text-sm text-slate-600">Loading PDF…</p>}
-            {!pdfBytes || !pdfDocument ? (
-              <UploadZone onFile={(file) => void handleFile(file)} />
-            ) : (
-              <div aria-label="PDF pages">
-                {Array.from({ length: numPages }, (_, index) => (
-                  <PdfPage key={index + 1} document={pdfDocument} pageNumber={index + 1} zoom={zoom} />
-                ))}
+
+            {/* Notices below toolbar */}
+            {textWarning && (
+              <div className="mx-auto max-w-7xl px-4 pt-3">
+                <Notice
+                  tone={textWarning.toLowerCase().includes('reduced') ? 'warning' : 'error'}
+                  icon={<AlertTriangle size={18} strokeWidth={2} />}
+                >
+                  {textWarning}
+                </Notice>
               </div>
             )}
-          </section>
-          <AdSlot position="side" />
-        </div>
-        <div className="px-4 pb-8 sm:px-6">
-          <AdSlot position="bottom" />
-        </div>
+            {error && (
+              <div className="mx-auto max-w-7xl px-4 pt-3">
+                <Notice tone="error" icon={<AlertTriangle size={18} strokeWidth={2} />}>
+                  {error}
+                </Notice>
+              </div>
+            )}
+
+            {/* Workspace */}
+            <div className="mx-auto flex max-w-7xl gap-6 px-4 py-6">
+              {/* Left (main) column */}
+              <div className="min-w-0 flex-1 overflow-x-auto">
+                {isLoading && (
+                  <p role="status" className="mb-4 text-center text-sm text-slate-600">
+                    Loading PDF...
+                  </p>
+                )}
+                <div className="flex flex-col gap-6" aria-label="PDF pages">
+                  {Array.from({ length: numPages }, (_, index) => (
+                    <PdfPage
+                      key={index + 1}
+                      document={pdfDocument}
+                      pageNumber={index + 1}
+                      zoom={zoom}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Right column (ad) */}
+              <div className="hidden xl:block w-[300px] shrink-0">
+                <div className="sticky top-32">
+                  <AdSlot position="side" />
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom ad slot */}
+            <div className="mx-auto max-w-7xl px-4 pb-8">
+              <AdSlot position="bottom" />
+            </div>
+          </div>
+        )}
       </main>
+      <Footer />
     </div>
   )
 }
