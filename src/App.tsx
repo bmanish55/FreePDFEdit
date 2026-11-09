@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import AdSlot from './components/AdSlot'
@@ -19,6 +19,7 @@ export default function App() {
   const setPdf = usePdfStore((state) => state.setPdf)
   const objects = usePdfStore((state) => state.objects)
   const fileName = usePdfStore((state) => state.fileName)
+  const textWarning = usePdfStore((state) => state.textWarning)
   const [pdfDocument, setPdfDocument] = useState<pdfjsLib.PDFDocumentProxy | null>(null)
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -48,8 +49,9 @@ export default function App() {
     try {
       setError('')
       await exportPdf(pdfBytes, objects, fileName)
-    } catch {
-      setError('Some characters are not supported yet (e.g. Hindi/Marathi). Please remove them.')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Some characters could not be encoded. Please remove unsupported symbols.'
+      setError(msg)
     }
   }
 
@@ -59,7 +61,8 @@ export default function App() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Delete' && document.activeElement?.tagName !== 'INPUT') {
+      const el = document.activeElement as HTMLElement | null
+      if (event.key === 'Delete' && el?.tagName !== 'INPUT' && !el?.isContentEditable) {
         usePdfStore.getState().deleteSelected()
       }
     }
@@ -79,8 +82,13 @@ export default function App() {
           <nav aria-label="PDF editing tools" className="mx-auto flex max-w-6xl flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-slate-700">PDF tools</span>
             <Toolbar />
-            <span className="text-sm text-slate-500">Edited text uses a standard font.</span>
+            <span className="text-sm text-slate-500">Edited text matches original font.</span>
           </nav>
+          {textWarning && (
+            <p role="alert" className="mx-auto mt-1 max-w-6xl text-xs font-medium text-red-600">
+              {textWarning}
+            </p>
+          )}
         </div>
         <div className="mx-auto flex max-w-[1540px] gap-8 px-4 py-8 sm:px-6 lg:py-10">
           <section aria-label="PDF workspace" className="min-w-0 flex-1">

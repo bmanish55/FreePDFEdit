@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+﻿import { useEffect, useRef, useState } from 'react'
 import type { PointerEvent } from 'react'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { screenToPdf } from '../lib/coords'
-import { extractText, type PdfTextItem } from '../lib/extractText'
+import { extractText, type TextRun } from '../lib/text/extractText'
 import ObjectView from './ObjectView'
 import { usePdfStore } from '../store/usePdfStore'
 
@@ -17,7 +17,7 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isNearViewport, setIsNearViewport] = useState(false)
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
-  const [textItems, setTextItems] = useState<PdfTextItem[]>([])
+  const [textRuns, setTextRuns] = useState<TextRun[]>([])
   const [drawPreview, setDrawPreview] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const [renderError, setRenderError] = useState('')
   const drawStart = useRef({ x: 0, y: 0 })
@@ -49,7 +49,6 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
       try {
         const page = await document.getPage(pageNumber)
         const viewport = page.getViewport({ scale: zoom })
-        const extractedText = await extractText(page, pageNumber)
         if (cancelled) return
         const canvas = canvasRef.current
         if (!canvas) return
@@ -59,11 +58,16 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
         canvas.style.width = `${viewport.width}px`
         canvas.style.height = `${viewport.height}px`
         setDimensions({ width: viewport.width, height: viewport.height })
-        setTextItems(extractedText)
         const context = canvas.getContext('2d')
         if (!context) return
         context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
         await page.render({ canvasContext: context, viewport }).promise
+
+        // Run extraction AFTER canvas finished rendering
+        const extractedRuns = await extractText(page, pageNumber, canvas)
+        if (!cancelled) {
+          setTextRuns(extractedRuns)
+        }
       } catch {
         if (!cancelled) setRenderError('This page could not be rendered.')
       }
@@ -94,13 +98,14 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
       type: 'text',
       page: pageNumber,
       x: point.x,
-      y: point.y,
-      width: 160,
-      height: 24,
+      baselineY: point.y + 14,
       text: '',
+      fontFamily: 'arimo',
+      bold: false,
+      italic: false,
       fontSize: 14,
       color: '#000000',
-      coverOriginal: false,
+      original: null,
     })
   }
 
@@ -129,10 +134,10 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
     setDrawPreview(null)
   }
 
-  const handleExistingText = (event: PointerEvent<HTMLDivElement>, item: PdfTextItem) => {
+  const handleExistingText = (event: PointerEvent<HTMLDivElement>, run: TextRun) => {
     event.stopPropagation()
     if (activeTool !== 'select') return
-    const existing = objects.find((object) => object.type === 'text' && object.originalKey === item.key)
+    const existing = objects.find((object) => object.type === 'text' && object.originalKey === run.key)
     if (existing) {
       selectObject(existing.id)
       return
@@ -141,15 +146,23 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
       id: crypto.randomUUID(),
       type: 'text',
       page: pageNumber,
-      x: item.x,
-      y: item.y,
-      width: item.width,
-      height: item.height,
-      text: item.text,
-      fontSize: item.fontSize,
-      color: '#000000',
-      coverOriginal: true,
-      originalKey: item.key,
+      x: run.x,
+      baselineY: run.baselineY,
+      text: run.text,
+      fontFamily: run.family,
+      bold: run.bold,
+      italic: run.italic,
+      fontSize: run.fontSize,
+      color: run.color,
+      originalKey: run.key,
+      original: {
+        text: run.text,
+        x: run.x,
+        width: run.width,
+        fontSize: run.fontSize,
+        bgColor: run.bgColor,
+        maxRight: run.maxRight,
+      },
     })
   }
 
@@ -164,16 +177,26 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
           onPointerMove={handleOverlayPointerMove}
           onPointerUp={handleOverlayPointerUp}
         >
-          {activeTool === 'select' && textItems.map((item) => (
-            <div
-              key={item.key}
-              className="absolute cursor-text"
-              style={{ left: item.x * zoom, top: item.y * zoom, width: item.width * zoom, height: item.height * zoom }}
-              aria-label={`Edit text: ${item.text}`}
-              onPointerDown={(event) => handleExistingText(event, item)}
-            />
+          {activeTool === 'select' &&
+            textRuns
+              .filter((run) => !objects.some((obj) => obj.type === 'text' && obj.originalKey === run.key))
+              .map((run) => (
+                <div
+                  key={run.key}
+                  className="absolute cursor-text hover:bg-blue-400/10"
+                  style={{
+                    left: run.x * zoom,
+                    top: (run.baselineY - run.fontSize * 0.9) * zoom,
+                    width: run.width * zoom,
+                    height: (run.fontSize * 1.15) * zoom,
+                  }}
+                  aria-label={`Edit text: ${run.text}`}
+                  onPointerDown={(event) => handleExistingText(event, run)}
+                />
+              ))}
+          {objects.map((object) => (
+            <ObjectView key={object.id} object={object} zoom={zoom} />
           ))}
-          {objects.map((object) => <ObjectView key={object.id} object={object} zoom={zoom} />)}
           {drawPreview && (
             <div
               className={`absolute ${activeTool === 'whiteout' ? 'bg-white' : 'bg-yellow-300/40'} border border-slate-400`}
