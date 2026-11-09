@@ -1,8 +1,23 @@
-﻿import type { ChangeEvent } from 'react'
+import { useRef, type ChangeEvent } from 'react'
+import {
+  Bold,
+  Eraser,
+  Highlighter,
+  ImagePlus,
+  Italic,
+  MousePointer2,
+  Trash2,
+  Type,
+  Undo2,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react'
 import type { FontFamilyKey } from '../lib/fonts/fontMatcher'
 import { usePdfStore, type TextObject } from '../store/usePdfStore'
+import ToolButton from './ui/ToolButton'
 
 export default function Toolbar() {
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const zoom = usePdfStore((state) => state.zoom)
   const setZoom = usePdfStore((state) => state.setZoom)
   const activeTool = usePdfStore((state) => state.activeTool)
@@ -49,190 +64,181 @@ export default function Toolbar() {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <button
-        type="button"
-        onClick={() => setActiveTool('select')}
-        className={`rounded border px-3 py-1 text-sm ${
-          activeTool === 'select'
-            ? 'border-blue-600 bg-blue-50 text-blue-700'
-            : 'border-slate-300'
-        }`}
-      >
-        Select
-      </button>
-      <button
-        type="button"
-        onClick={() => setActiveTool('addText')}
-        className={`rounded border px-3 py-1 text-sm ${
-          activeTool === 'addText'
-            ? 'border-blue-600 bg-blue-50 text-blue-700'
-            : 'border-slate-300'
-        }`}
-      >
-        Add Text
-      </button>
-      <label
-        className={`cursor-pointer rounded border px-3 py-1 text-sm ${
-          activeTool === 'addImage'
-            ? 'border-blue-600 bg-blue-50 text-blue-700'
-            : 'border-slate-300'
-        }`}
-      >
-        Add Image
+    <div className="sticky top-14 z-20 border-b border-slate-200 bg-white">
+      {/* 1. Main toolbar row */}
+      <div className="mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 py-2 [scrollbar-width:none]">
+        {/* Tools */}
+        <ToolButton
+          icon={<MousePointer2 size={18} strokeWidth={2} />}
+          label="Select"
+          active={activeTool === 'select'}
+          onClick={() => setActiveTool('select')}
+          className="shrink-0"
+        />
+        <ToolButton
+          icon={<Type size={18} strokeWidth={2} />}
+          label="Add Text"
+          active={activeTool === 'addText'}
+          onClick={() => setActiveTool('addText')}
+          className="shrink-0"
+        />
+        <ToolButton
+          icon={<ImagePlus size={18} strokeWidth={2} />}
+          label="Add Image"
+          active={activeTool === 'addImage'}
+          onClick={() => {
+            setActiveTool('addImage')
+            fileInputRef.current?.click()
+          }}
+          className="shrink-0"
+        />
         <input
+          ref={fileInputRef}
           type="file"
           accept="image/png,image/jpeg"
           className="sr-only"
           onChange={(event) => void handleImageChange(event)}
-          onClick={() => setActiveTool('addImage')}
         />
-      </label>
-      <button
-        type="button"
-        onClick={() => setActiveTool('whiteout')}
-        className={`rounded border px-3 py-1 text-sm ${
-          activeTool === 'whiteout'
-            ? 'border-blue-600 bg-blue-50 text-blue-700'
-            : 'border-slate-300'
-        }`}
-      >
-        Whiteout
-      </button>
-      <button
-        type="button"
-        onClick={() => setActiveTool('highlight')}
-        className={`rounded border px-3 py-1 text-sm ${
-          activeTool === 'highlight'
-            ? 'border-blue-600 bg-blue-50 text-blue-700'
-            : 'border-slate-300'
-        }`}
-      >
-        Highlight
-      </button>
-      <button
-        type="button"
-        onClick={undo}
-        className="rounded border border-slate-300 px-3 py-1 text-sm"
-      >
-        Undo
-      </button>
-      <button
-        type="button"
-        onClick={deleteSelected}
-        className="rounded border border-slate-300 px-3 py-1 text-sm"
-      >
-        Delete
-      </button>
-      <button
-        type="button"
-        onClick={() => setZoom(zoom - 0.1)}
-        className="rounded border border-slate-300 px-3 py-1 text-sm"
-      >
-        −
-      </button>
-      <span className="min-w-14 text-center text-sm text-slate-600">
-        {Math.round(zoom * 100)}%
-      </span>
-      <button
-        type="button"
-        onClick={() => setZoom(zoom + 0.1)}
-        className="rounded border border-slate-300 px-3 py-1 text-sm"
-      >
-        +
-      </button>
+        <ToolButton
+          icon={<Eraser size={18} strokeWidth={2} />}
+          label="Whiteout"
+          active={activeTool === 'whiteout'}
+          onClick={() => setActiveTool('whiteout')}
+          className="shrink-0"
+        />
+        <ToolButton
+          icon={<Highlighter size={18} strokeWidth={2} />}
+          label="Highlight"
+          active={activeTool === 'highlight'}
+          onClick={() => setActiveTool('highlight')}
+          className="shrink-0"
+        />
 
+        {/* Divider */}
+        <div className="mx-2 h-6 w-px shrink-0 bg-slate-200" />
+
+        {/* Edit */}
+        <ToolButton
+          icon={<Undo2 size={18} strokeWidth={2} />}
+          label="Undo"
+          onClick={undo}
+          className="shrink-0"
+        />
+        <ToolButton
+          icon={<Trash2 size={18} strokeWidth={2} />}
+          label="Delete"
+          danger
+          onClick={deleteSelected}
+          className="shrink-0"
+        />
+
+        {/* Divider */}
+        <div className="mx-2 h-6 w-px shrink-0 bg-slate-200" />
+
+        {/* Zoom */}
+        <ToolButton
+          icon={<ZoomOut size={18} strokeWidth={2} />}
+          label="Zoom out"
+          hideLabel
+          onClick={() => setZoom(zoom - 0.1)}
+          className="shrink-0"
+        />
+        <span className="w-12 shrink-0 text-center text-sm tabular-nums text-slate-600">
+          {Math.round(zoom * 100)}%
+        </span>
+        <ToolButton
+          icon={<ZoomIn size={18} strokeWidth={2} />}
+          label="Zoom in"
+          hideLabel
+          onClick={() => setZoom(zoom + 0.1)}
+          className="shrink-0"
+        />
+
+        {/* Hint */}
+        <span className="ml-auto hidden shrink-0 text-xs text-slate-500 lg:inline">
+          Edited text matches original font.
+        </span>
+      </div>
+
+      {/* 2. Text properties bar */}
       {selectedTextObject && (
-        <div className="flex flex-wrap items-center gap-1.5 border-l border-slate-300 pl-2">
-          <select
-            value={selectedTextObject.fontFamily}
-            onChange={(e) =>
-              updateObject(selectedTextObject.id, {
-                fontFamily: e.target.value as FontFamilyKey,
-              })
-            }
-            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700"
-            aria-label="Font family"
-          >
-            <option value="arimo">Arimo (Arial/Helvetica)</option>
-            <option value="carlito">Carlito (Calibri)</option>
-            <option value="tinos">Tinos (Times New Roman)</option>
-            <option value="cousine">Cousine (Courier New)</option>
-            <option value="devanagari">Noto Sans Devanagari (Hindi / Marathi)</option>
-          </select>
-
-          <button
-            type="button"
-            onClick={() =>
-              updateObject(selectedTextObject.id, { bold: !selectedTextObject.bold })
-            }
-            className={`rounded border px-2 py-1 text-xs font-bold ${
-              selectedTextObject.bold
-                ? 'border-blue-600 bg-blue-100 text-blue-800'
-                : 'border-slate-300 bg-white text-slate-700'
-            }`}
-            aria-label="Toggle bold"
-            title="Bold"
-          >
-            B
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              updateObject(selectedTextObject.id, {
-                italic: !selectedTextObject.italic,
-              })
-            }
-            className={`rounded border px-2 py-1 text-xs italic ${
-              selectedTextObject.italic
-                ? 'border-blue-600 bg-blue-100 text-blue-800'
-                : 'border-slate-300 bg-white text-slate-700'
-            }`}
-            aria-label="Toggle italic"
-            title="Italic"
-          >
-            I
-          </button>
-
-          <label className="flex items-center gap-1 text-xs text-slate-600">
-            <span>Size:</span>
-            <input
-              type="number"
-              min={6}
-              max={96}
-              step={1}
-              value={Math.round(selectedTextObject.fontSize)}
-              onChange={(e) => {
-                const val = Number.parseFloat(e.target.value)
-                if (!Number.isNaN(val) && val >= 4 && val <= 120) {
-                  updateObject(selectedTextObject.id, { fontSize: val })
-                }
-              }}
-              className="w-14 rounded border border-slate-300 bg-white px-1.5 py-0.5 text-xs text-slate-800"
-              aria-label="Font size"
-            />
-          </label>
-
-          <label
-            className="flex items-center gap-1 text-xs text-slate-600"
-            title="Text Color"
-          >
-            <span>Color:</span>
-            <input
-              type="color"
-              value={
-                selectedTextObject.color.startsWith('#')
-                  ? selectedTextObject.color
-                  : '#000000'
-              }
+        <div className="border-t border-slate-200 bg-slate-50">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-4 py-2">
+            <select
+              value={selectedTextObject.fontFamily}
               onChange={(e) =>
-                updateObject(selectedTextObject.id, { color: e.target.value })
+                updateObject(selectedTextObject.id, {
+                  fontFamily: e.target.value as FontFamilyKey,
+                })
               }
-              className="h-6 w-7 cursor-pointer rounded border border-slate-300 bg-white p-0.5"
-              aria-label="Text color"
+              className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+              aria-label="Font family"
+            >
+              <option value="arimo">Arimo (Arial/Helvetica)</option>
+              <option value="carlito">Carlito (Calibri)</option>
+              <option value="tinos">Tinos (Times New Roman)</option>
+              <option value="cousine">Cousine (Courier New)</option>
+              <option value="devanagari">Noto Sans Devanagari (Hindi / Marathi)</option>
+            </select>
+
+            <ToolButton
+              icon={<Bold size={18} strokeWidth={2} />}
+              label="Bold"
+              hideLabel
+              active={selectedTextObject.bold}
+              onClick={() =>
+                updateObject(selectedTextObject.id, { bold: !selectedTextObject.bold })
+              }
             />
-          </label>
+
+            <ToolButton
+              icon={<Italic size={18} strokeWidth={2} />}
+              label="Italic"
+              hideLabel
+              active={selectedTextObject.italic}
+              onClick={() =>
+                updateObject(selectedTextObject.id, {
+                  italic: !selectedTextObject.italic,
+                })
+              }
+            />
+
+            <label className="flex items-center gap-1.5 text-sm text-slate-600">
+              <span>Size:</span>
+              <input
+                type="number"
+                min={6}
+                max={96}
+                step={1}
+                value={Math.round(selectedTextObject.fontSize)}
+                onChange={(e) => {
+                  const val = Number.parseFloat(e.target.value)
+                  if (!Number.isNaN(val) && val >= 4 && val <= 120) {
+                    updateObject(selectedTextObject.id, { fontSize: val })
+                  }
+                }}
+                className="h-9 w-16 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                aria-label="Font size"
+              />
+            </label>
+
+            <label className="flex items-center gap-1.5 text-sm text-slate-600" title="Text Color">
+              <span>Color:</span>
+              <input
+                type="color"
+                value={
+                  selectedTextObject.color.startsWith('#')
+                    ? selectedTextObject.color
+                    : '#000000'
+                }
+                onChange={(e) =>
+                  updateObject(selectedTextObject.id, { color: e.target.value })
+                }
+                className="h-9 w-9 cursor-pointer rounded-lg border border-slate-300 bg-white p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                aria-label="Text color"
+              />
+            </label>
+          </div>
         </div>
       )}
     </div>
