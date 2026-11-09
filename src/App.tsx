@@ -1,8 +1,9 @@
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import AdSlot from './components/AdSlot'
 import DesktopNotice from './components/DesktopNotice'
+import Footer from './components/Footer'
 import Header from './components/Header'
 import PdfPage from './components/PdfPage'
 import Toolbar from './components/Toolbar'
@@ -71,14 +72,14 @@ export default function App() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="flex min-h-screen flex-col bg-slate-50">
       <DesktopNotice />
       <Header onDownload={() => void handleDownload()} hasPdf={Boolean(pdfBytes)} />
-      <main>
+      <main className="flex-1">
         <div className="px-4 py-4 sm:px-6">
           <AdSlot position="top" />
         </div>
-        <div className="sticky top-0 z-10 border-y border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-6">
+        <div className="sticky top-14 z-10 border-y border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-6">
           <nav aria-label="PDF editing tools" className="mx-auto flex max-w-6xl flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-slate-700">PDF tools</span>
             <Toolbar />
@@ -93,7 +94,7 @@ export default function App() {
         <div className="mx-auto flex max-w-[1540px] gap-8 px-4 py-8 sm:px-6 lg:py-10">
           <section aria-label="PDF workspace" className="min-w-0 flex-1">
             {error && <p role="alert" className="mb-4 text-center text-sm text-red-600">{error}</p>}
-            {isLoading && <p role="status" className="mb-4 text-center text-sm text-slate-600">Loading PDF…</p>}
+            {isLoading && <p role="status" className="mb-4 text-center text-sm text-slate-600">Loading PDF...</p>}
             {!pdfBytes || !pdfDocument ? (
               <UploadZone onFile={(file) => void handleFile(file)} />
             ) : (
@@ -110,6 +111,7 @@ export default function App() {
           <AdSlot position="bottom" />
         </div>
       </main>
+      <Footer />
     </div>
   )
 }
