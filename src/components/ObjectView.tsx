@@ -5,6 +5,8 @@ import { loadFont, type LoadedFont } from '../lib/fonts/fontLoader'
 import { hasDevanagari } from '../lib/fonts/fontMatcher'
 import { layoutText } from '../lib/text/layoutText'
 import { usePdfStore, type EditObject, type TextObject } from '../store/usePdfStore'
+import { useIsMobile } from '../hooks/useIsMobile'
+import { useMobileStore } from '../store/useMobileStore'
 
 type ObjectViewProps = {
   object: EditObject
@@ -18,6 +20,8 @@ function TextView({ object, zoom }: { object: TextObject; zoom: number }) {
   const beginHistory = usePdfStore((state) => state.beginHistory)
   const setTextWarning = usePdfStore((state) => state.setTextWarning)
   const selected = selectedId === object.id
+  const isMobile = useIsMobile()
+  const mobileMode = useMobileStore((state) => state.mode)
 
   const [font, setFont] = useState<LoadedFont | null>(null)
   const [editing, setEditing] = useState(true)
@@ -84,10 +88,11 @@ function TextView({ object, zoom }: { object: TextObject; zoom: number }) {
   }, [selected, layout.warning, setTextWarning])
 
   useEffect(() => {
+    if (isMobile) return
     if (editing && inputRef.current) {
       inputRef.current.focus({ preventScroll: true })
     }
-  }, [editing])
+  }, [editing, isMobile])
 
   const isOriginalPdfText = object.original !== null
 
@@ -174,6 +179,51 @@ function TextView({ object, zoom }: { object: TextObject; zoom: number }) {
       ? `${effectiveFont.cssFamily}, 'Noto Sans Devanagari', sans-serif`
       : effectiveFont.cssFamily
 
+  if (isMobile && mobileMode === 'view') {
+    return (
+      <>
+        {layout.cover && (
+          <div
+            className="pointer-events-none absolute"
+            style={{
+              left: layout.cover.x * zoom,
+              top: layout.cover.y * zoom,
+              width: layout.cover.width * zoom,
+              height: layout.cover.height * zoom,
+              backgroundColor: layout.cover.color,
+            }}
+          />
+        )}
+        <div
+          className="pointer-events-none absolute"
+          style={{
+            left: elementLeft,
+            top: elementTop,
+            height: `${elementHeight}px`,
+          }}
+        >
+          <span
+            className="block p-0 m-0 outline-none"
+            style={{
+              fontFamily: fontCss,
+              fontSize: `${layout.fontSize * zoom}px`,
+              color: object.color,
+              fontWeight: object.bold ? 'bold' : 'normal',
+              fontStyle: object.italic ? 'italic' : 'normal',
+              wordSpacing: layout.wordSpacing ? `${layout.wordSpacing * zoom}px` : undefined,
+              whiteSpace: 'pre',
+              overflow: 'visible',
+              height: `${elementHeight}px`,
+              lineHeight: `${elementHeight}px`,
+            }}
+          >
+            {object.text || '\u00A0'}
+          </span>
+        </div>
+      </>
+    )
+  }
+
   return (
     <>
       {layout.cover && (
@@ -257,6 +307,8 @@ export default function ObjectView({ object, zoom }: ObjectViewProps) {
   const objectStart = useRef({ x: 0, y: 0 })
   const resizeStart = useRef({ x: 0, width: 0, height: 0 })
   const selected = selectedId === object.id
+  const isMobile = useIsMobile()
+  const mobileMode = useMobileStore((state) => state.mode)
 
   if (object.type === 'text') {
     return <TextView object={object} zoom={zoom} />
@@ -295,6 +347,28 @@ export default function ObjectView({ object, zoom }: ObjectViewProps) {
       },
       false,
     )
+  }
+
+  if (isMobile && mobileMode === 'view') {
+    if (object.type === 'whiteout' || object.type === 'highlight') {
+      return (
+        <div
+          className={`pointer-events-none absolute ${object.type === 'whiteout' ? 'bg-white' : 'bg-yellow-300/40'}`}
+          style={{ left: position.x, top: position.y, width: object.width * zoom, height: object.height * zoom }}
+        />
+      )
+    }
+    if (object.type === 'image') {
+      return (
+        <div
+          className="pointer-events-none absolute"
+          style={{ left: position.x, top: position.y, width: object.width * zoom, height: object.height * zoom }}
+        >
+          <img src={object.dataUrl} alt="Added PDF" className="h-full w-full object-contain" draggable={false} />
+        </div>
+      )
+    }
+    return null
   }
 
   if (object.type === 'whiteout' || object.type === 'highlight') {

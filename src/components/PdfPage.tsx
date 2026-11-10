@@ -5,6 +5,8 @@ import { screenToPdf } from '../lib/coords'
 import { extractText, type TextRun } from '../lib/text/extractText'
 import ObjectView from './ObjectView'
 import { usePdfStore } from '../store/usePdfStore'
+import { useIsMobile } from '../hooks/useIsMobile'
+import { useMobileStore } from '../store/useMobileStore'
 
 type PdfPageProps = {
   document: PDFDocumentProxy
@@ -28,6 +30,8 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
   const selectObject = usePdfStore((state) => state.selectObject)
   const setVisiblePage = usePdfStore((state) => state.setVisiblePage)
   const numPages = usePdfStore((state) => state.numPages)
+  const isMobile = useIsMobile()
+  const mobileMode = useMobileStore((state) => state.mode)
 
   useEffect(() => {
     const container = containerRef.current
@@ -216,6 +220,38 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
         maxRight: run.maxRight,
       },
     })
+  }
+
+  if (isMobile) {
+    const isViewMode = mobileMode === 'view'
+    return (
+      <div ref={containerRef} className="mx-auto shrink-0">
+        <div className="relative bg-white shadow-md ring-1 ring-slate-200">
+          <canvas
+            ref={canvasRef}
+            aria-label={`PDF page ${pageNumber}`}
+            className={dimensions.width ? 'block' : 'hidden'}
+          />
+          {dimensions.width > 0 && (
+            <div
+              className={`absolute inset-0 ${isViewMode ? 'pointer-events-none' : ''}`}
+              style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
+            >
+              {objects.map((object) => (
+                <ObjectView key={object.id} object={object} zoom={zoom} />
+              ))}
+            </div>
+          )}
+          {!dimensions.width && !renderError && (
+            <div className="h-[600px] w-[450px] max-w-full animate-pulse rounded bg-slate-200" aria-label="Loading page" />
+          )}
+          {renderError && <p role="alert" className="p-6 text-sm text-red-600">{renderError}</p>}
+        </div>
+        <p className="mt-2 text-center text-xs text-slate-500">
+          Page {pageNumber} of {numPages}
+        </p>
+      </div>
+    )
   }
 
   return (

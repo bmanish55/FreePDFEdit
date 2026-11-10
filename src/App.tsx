@@ -8,6 +8,7 @@ import FeedbackModal from './components/FeedbackModal'
 import Footer from './components/Footer'
 import Header from './components/Header'
 import LandingView from './components/LandingView'
+import MobileEditorShell from './components/mobile/MobileEditorShell'
 import PdfPage from './components/PdfPage'
 import Toolbar from './components/Toolbar'
 import Notice from './components/ui/Notice'
@@ -89,6 +90,23 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
+
+  if (isMobile && pdfBytes && pdfDocument) {
+    return (
+      <>
+        <MobileEditorShell
+          pdfDocument={pdfDocument}
+          onDownload={() => void handleDownload()}
+          error={error}
+          isLoading={isLoading}
+        />
+        <FeedbackModal
+          isOpen={isFeedbackModalOpen}
+          onClose={() => setFeedbackModalOpen(false)}
+        />
+      </>
+    )
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
