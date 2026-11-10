@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ChangeEvent, KeyboardEvent, PointerEvent } from 'react'
+import type { ChangeEvent, KeyboardEvent, MouseEvent, PointerEvent } from 'react'
 import { pdfToScreen } from '../lib/coords'
 import { loadFont, type LoadedFont } from '../lib/fonts/fontLoader'
 import { hasDevanagari } from '../lib/fonts/fontMatcher'
@@ -22,6 +22,8 @@ function TextView({ object, zoom }: { object: TextObject; zoom: number }) {
   const selected = selectedId === object.id
   const isMobile = useIsMobile()
   const mobileMode = useMobileStore((state) => state.mode)
+  const openTextEditor = useMobileStore((state) => state.openTextEditor)
+  const commitTextEditor = useMobileStore((state) => state.commitTextEditor)
 
   const [font, setFont] = useState<LoadedFont | null>(null)
   const [editing, setEditing] = useState(true)
@@ -31,6 +33,7 @@ function TextView({ object, zoom }: { object: TextObject; zoom: number }) {
   const objectStart = useRef({ x: 0, y: 0 })
   const initialText = useRef(object.text)
   const hasMoved = useRef(false)
+  const mobileHistoryStarted = useRef(false)
 
   const isDevanagari = hasDevanagari(object.text) || object.fontFamily === 'devanagari'
   const activeFamily = isDevanagari ? 'devanagari' : object.fontFamily
@@ -179,7 +182,17 @@ function TextView({ object, zoom }: { object: TextObject; zoom: number }) {
       ? `${effectiveFont.cssFamily}, 'Noto Sans Devanagari', sans-serif`
       : effectiveFont.cssFamily
 
-  if (isMobile && mobileMode === 'view') {
+  if (isMobile) {
+    const isViewMode = mobileMode === 'view'
+    const canDragOnMobile = !isViewMode && selected && !isOriginalPdfText
+
+    const endMobileDrag = (target: HTMLDivElement, pointerId: number) => {
+      if (target.hasPointerCapture(pointerId)) {
+        target.releasePointerCapture(pointerId)
+      }
+      mobileHistoryStarted.current = false
+    }
+
     return (
       <>
         {layout.cover && (
@@ -195,12 +208,86 @@ function TextView({ object, zoom }: { object: TextObject; zoom: number }) {
           />
         )}
         <div
-          className="pointer-events-none absolute"
+          data-mobile-text-id={object.id}
+          className={`absolute ${isViewMode ? 'pointer-events-none' : ''} ${
+            !isViewMode && selected ? 'ring-2 ring-brand-500' : ''
+          } ${!isViewMode && layout.fit !== 'ok' ? 'outline-2 outline-dashed outline-orange-500' : ''}`}
           style={{
             left: elementLeft,
             top: elementTop,
             height: `${elementHeight}px`,
+            touchAction: canDragOnMobile ? 'none' : 'pan-x pan-y pinch-zoom',
           }}
+          onPointerDown={
+            canDragOnMobile
+              ? (event) => {
+                  event.stopPropagation()
+                  hasMoved.current = false
+                  mobileHistoryStarted.current = false
+                  dragStart.current = { x: event.clientX, y: event.clientY }
+                  objectStart.current = { x: object.x, y: object.baselineY }
+                  event.currentTarget.setPointerCapture(event.pointerId)
+                }
+              : undefined
+          }
+          onPointerMove={
+            canDragOnMobile
+              ? (event) => {
+                  if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+                  const screenDx = event.clientX - dragStart.current.x
+                  const screenDy = event.clientY - dragStart.current.y
+                  if (!hasMoved.current && Math.hypot(screenDx, screenDy) < 8) return
+                  if (!mobileHistoryStarted.current) {
+                    beginHistory()
+                    mobileHistoryStarted.current = true
+                  }
+                  hasMoved.current = true
+                  updateObject(
+                    object.id,
+                    {
+                      x: objectStart.current.x + screenDx / zoom,
+                      baselineY: objectStart.current.y + screenDy / zoom,
+                    },
+                    false,
+                  )
+                }
+              : undefined
+          }
+          onPointerUp={
+            canDragOnMobile
+              ? (event) => endMobileDrag(event.currentTarget, event.pointerId)
+              : undefined
+          }
+          onPointerCancel={
+            canDragOnMobile
+              ? (event) => endMobileDrag(event.currentTarget, event.pointerId)
+              : undefined
+          }
+          onLostPointerCapture={
+            canDragOnMobile
+              ? (event) => endMobileDrag(event.currentTarget, event.pointerId)
+              : undefined
+          }
+          onClick={
+            isViewMode
+              ? undefined
+              : (event) => {
+                  event.stopPropagation()
+                  if (hasMoved.current) {
+                    hasMoved.current = false
+                    return
+                  }
+                  const activeEditId = useMobileStore.getState().editingTextId
+                  if (activeEditId && activeEditId !== object.id) {
+                    commitTextEditor()
+                  }
+                  if (selected) {
+                    openTextEditor(object.id, false)
+                  } else {
+                    selectObject(object.id)
+                  }
+                }
+          }
         >
           <span
             className="block p-0 m-0 outline-none"
@@ -309,6 +396,7 @@ export default function ObjectView({ object, zoom }: ObjectViewProps) {
   const selected = selectedId === object.id
   const isMobile = useIsMobile()
   const mobileMode = useMobileStore((state) => state.mode)
+  const commitTextEditor = useMobileStore((state) => state.commitTextEditor)
 
   if (object.type === 'text') {
     return <TextView object={object} zoom={zoom} />
@@ -349,20 +437,47 @@ export default function ObjectView({ object, zoom }: ObjectViewProps) {
     )
   }
 
-  if (isMobile && mobileMode === 'view') {
+  if (isMobile) {
+    const isViewMode = mobileMode === 'view'
+    const handleMobileSelect = isViewMode
+      ? undefined
+      : (event: MouseEvent<HTMLDivElement>) => {
+          event.stopPropagation()
+          commitTextEditor()
+          selectObject(object.id)
+        }
+
     if (object.type === 'whiteout' || object.type === 'highlight') {
       return (
         <div
-          className={`pointer-events-none absolute ${object.type === 'whiteout' ? 'bg-white' : 'bg-yellow-300/40'}`}
-          style={{ left: position.x, top: position.y, width: object.width * zoom, height: object.height * zoom }}
+          className={`absolute ${isViewMode ? 'pointer-events-none' : ''} ${
+            object.type === 'whiteout' ? 'bg-white' : 'bg-yellow-300/40'
+          } ${!isViewMode && selected ? 'ring-2 ring-brand-500' : ''}`}
+          style={{
+            left: position.x,
+            top: position.y,
+            width: object.width * zoom,
+            height: object.height * zoom,
+            touchAction: 'pan-x pan-y pinch-zoom',
+          }}
+          onClick={handleMobileSelect}
         />
       )
     }
     if (object.type === 'image') {
       return (
         <div
-          className="pointer-events-none absolute"
-          style={{ left: position.x, top: position.y, width: object.width * zoom, height: object.height * zoom }}
+          className={`absolute ${isViewMode ? 'pointer-events-none' : ''} ${
+            !isViewMode && selected ? 'ring-2 ring-brand-500' : ''
+          }`}
+          style={{
+            left: position.x,
+            top: position.y,
+            width: object.width * zoom,
+            height: object.height * zoom,
+            touchAction: 'pan-x pan-y pinch-zoom',
+          }}
+          onClick={handleMobileSelect}
         >
           <img src={object.dataUrl} alt="Added PDF" className="h-full w-full object-contain" draggable={false} />
         </div>

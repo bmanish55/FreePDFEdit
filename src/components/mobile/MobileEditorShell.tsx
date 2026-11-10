@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { AlertTriangle } from 'lucide-react'
+import { useMobileStore } from '../../store/useMobileStore'
 import { usePdfStore } from '../../store/usePdfStore'
 import AdSlot from '../AdSlot'
 import DesktopNotice from '../DesktopNotice'
@@ -8,6 +9,8 @@ import Header from '../Header'
 import PdfPage from '../PdfPage'
 import Notice from '../ui/Notice'
 import MobileBottomBar from './MobileBottomBar'
+import MobileHint from './MobileHint'
+import TextEditSheet from './TextEditSheet'
 
 type MobileEditorShellProps = {
   pdfDocument: PDFDocumentProxy
@@ -26,6 +29,7 @@ export default function MobileEditorShell({
   const zoom = usePdfStore((state) => state.zoom)
   const setZoom = usePdfStore((state) => state.setZoom)
   const textWarning = usePdfStore((state) => state.textWarning)
+  const editingTextId = useMobileStore((state) => state.editingTextId)
 
   const pagesContainerRef = useRef<HTMLDivElement>(null)
   const page1BaseWidthRef = useRef<number | null>(null)
@@ -74,10 +78,14 @@ export default function MobileEditorShell({
     }
   }, [pdfDocument, setZoom])
 
+  const bottomSpace = editingTextId
+    ? 'calc(240px + env(safe-area-inset-bottom))'
+    : 'calc(56px + env(safe-area-inset-bottom))'
+
   return (
     <div
       className="flex min-h-screen flex-col bg-slate-100"
-      style={{ paddingBottom: 'calc(56px + env(safe-area-inset-bottom))' }}
+      style={{ paddingBottom: bottomSpace }}
     >
       <DesktopNotice />
       <Header onDownload={onDownload} hasPdf />
@@ -134,7 +142,9 @@ export default function MobileEditorShell({
         </div>
       </main>
 
+      <MobileHint />
       <MobileBottomBar onFitWidth={() => void fitToWidth()} />
+      <TextEditSheet />
     </div>
   )
 }

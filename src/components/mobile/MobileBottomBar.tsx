@@ -12,7 +12,7 @@ import {
   ZoomOut,
 } from 'lucide-react'
 import { useMobileStore } from '../../store/useMobileStore'
-import { usePdfStore } from '../../store/usePdfStore'
+import { usePdfStore, type ActiveTool } from '../../store/usePdfStore'
 import Button from '../ui/Button'
 
 type MobileBottomBarProps = {
@@ -22,11 +22,23 @@ type MobileBottomBarProps = {
 export default function MobileBottomBar({ onFitWidth }: MobileBottomBarProps) {
   const mode = useMobileStore((state) => state.mode)
   const setMode = useMobileStore((state) => state.setMode)
+  const showHint = useMobileStore((state) => state.showHint)
   const zoom = usePdfStore((state) => state.zoom)
   const setZoom = usePdfStore((state) => state.setZoom)
   const activeTool = usePdfStore((state) => state.activeTool)
+  const setActiveTool = usePdfStore((state) => state.setActiveTool)
   const selectedId = usePdfStore((state) => state.selectedId)
   const historyLength = usePdfStore((state) => state.history.length)
+
+  const handleSelectTool = (tool: ActiveTool) => {
+    if (tool === 'select') {
+      setActiveTool('select')
+      showHint('Tap any text to edit it')
+    } else if (tool === 'addText') {
+      setActiveTool('addText')
+      showHint('Tap on the page to add text')
+    }
+  }
 
   const toolItems = [
     { id: 'select', label: 'Select', icon: MousePointer2, active: activeTool === 'select' },
@@ -48,7 +60,10 @@ export default function MobileBottomBar({ onFitWidth }: MobileBottomBarProps) {
             variant="primary"
             size="md"
             icon={<Pencil size={16} strokeWidth={2} />}
-            onClick={() => setMode('edit')}
+            onClick={() => {
+              setMode('edit')
+              showHint('Pick a tool below')
+            }}
           >
             Edit
           </Button>
@@ -107,7 +122,7 @@ export default function MobileBottomBar({ onFitWidth }: MobileBottomBarProps) {
               <button
                 key={item.id}
                 type="button"
-                onClick={() => {}}
+                onClick={() => handleSelectTool(item.id)}
                 aria-label={item.label}
                 title={item.label}
                 className={`flex h-14 w-14 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${

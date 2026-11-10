@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { PointerEvent } from 'react'
+import type { MouseEvent, PointerEvent } from 'react'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { screenToPdf } from '../lib/coords'
 import { extractText, type TextRun } from '../lib/text/extractText'
@@ -30,8 +30,11 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
   const selectObject = usePdfStore((state) => state.selectObject)
   const setVisiblePage = usePdfStore((state) => state.setVisiblePage)
   const numPages = usePdfStore((state) => state.numPages)
+  const setActiveTool = usePdfStore((state) => state.setActiveTool)
   const isMobile = useIsMobile()
   const mobileMode = useMobileStore((state) => state.mode)
+  const openTextEditor = useMobileStore((state) => state.openTextEditor)
+  const commitTextEditor = useMobileStore((state) => state.commitTextEditor)
 
   useEffect(() => {
     const container = containerRef.current
@@ -224,6 +227,74 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
 
   if (isMobile) {
     const isViewMode = mobileMode === 'view'
+
+    const handleMobileExistingText = (run: TextRun) => {
+      if (isViewMode || activeTool !== 'select') return
+      const existing = objects.find((object) => object.type === 'text' && object.originalKey === run.key)
+      if (existing) {
+        if (useMobileStore.getState().editingTextId !== existing.id) {
+          commitTextEditor()
+        }
+        selectObject(existing.id)
+        openTextEditor(existing.id, false)
+        return
+      }
+      commitTextEditor()
+      const newId = crypto.randomUUID()
+      addObject({
+        id: newId,
+        type: 'text',
+        page: pageNumber,
+        x: run.x,
+        baselineY: run.baselineY,
+        text: run.text,
+        fontFamily: run.family,
+        bold: run.bold,
+        italic: run.italic,
+        fontSize: run.fontSize,
+        color: run.color,
+        originalKey: run.key,
+        original: {
+          text: run.text,
+          x: run.x,
+          width: run.width,
+          fontSize: run.fontSize,
+          bgColor: run.bgColor,
+          maxRight: run.maxRight,
+        },
+      })
+      openTextEditor(newId, true)
+    }
+
+    const handleMobileOverlayClick = (event: MouseEvent<HTMLDivElement>) => {
+      if (isViewMode) return
+      if (activeTool === 'addText') {
+        commitTextEditor()
+        const bounds = event.currentTarget.getBoundingClientRect()
+        const point = screenToPdf({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, zoom)
+        const newId = crypto.randomUUID()
+        addObject({
+          id: newId,
+          type: 'text',
+          page: pageNumber,
+          x: point.x,
+          baselineY: point.y + 14,
+          text: '',
+          fontFamily: 'arimo',
+          bold: false,
+          italic: false,
+          fontSize: 14,
+          color: '#000000',
+          original: null,
+        })
+        setActiveTool('select')
+        openTextEditor(newId, true)
+        return
+      }
+      commitTextEditor()
+      selectObject(null)
+    }
+
     return (
       <div ref={containerRef} className="mx-auto shrink-0">
         <div className="relative bg-white shadow-md ring-1 ring-slate-200">
@@ -236,7 +307,30 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
             <div
               className={`absolute inset-0 ${isViewMode ? 'pointer-events-none' : ''}`}
               style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
+              onClick={handleMobileOverlayClick}
             >
+              {!isViewMode &&
+                activeTool === 'select' &&
+                textRuns
+                  .filter((run) => !objects.some((obj) => obj.type === 'text' && obj.originalKey === run.key))
+                  .map((run) => (
+                    <div
+                      key={run.key}
+                      className="absolute"
+                      style={{
+                        left: run.x * zoom,
+                        top: (run.baselineY - run.fontSize * 0.9) * zoom,
+                        width: run.width * zoom,
+                        height: (run.fontSize * 1.15) * zoom,
+                        touchAction: 'pan-x pan-y pinch-zoom',
+                      }}
+                      aria-label={`Edit text: ${run.text}`}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        handleMobileExistingText(run)
+                      }}
+                    />
+                  ))}
               {objects.map((object) => (
                 <ObjectView key={object.id} object={object} zoom={zoom} />
               ))}
