@@ -291,6 +291,30 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
         openTextEditor(newId, true)
         return
       }
+      if (activeTool === 'whiteout' || activeTool === 'highlight') {
+        commitTextEditor()
+        const bounds = event.currentTarget.getBoundingClientRect()
+        const point = screenToPdf({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, zoom)
+        const pageWidth = dimensions.width / zoom
+        const pageHeight = dimensions.height / zoom
+        const defaultWidth = activeTool === 'highlight' ? 140 : 120
+        const defaultHeight = activeTool === 'highlight' ? 18 : 24
+        const width = Math.min(defaultWidth, pageWidth)
+        const height = Math.min(defaultHeight, pageHeight)
+        const x = Math.min(Math.max(0, point.x - width / 2), Math.max(0, pageWidth - width))
+        const y = Math.min(Math.max(0, point.y - height / 2), Math.max(0, pageHeight - height))
+        addObject({
+          id: crypto.randomUUID(),
+          type: activeTool,
+          page: pageNumber,
+          x,
+          y,
+          width,
+          height,
+        })
+        setActiveTool('select')
+        return
+      }
       commitTextEditor()
       selectObject(null)
     }

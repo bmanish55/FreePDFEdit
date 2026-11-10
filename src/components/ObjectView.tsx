@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ChangeEvent, KeyboardEvent, MouseEvent, PointerEvent } from 'react'
+import type { ChangeEvent, KeyboardEvent, PointerEvent } from 'react'
 import { pdfToScreen } from '../lib/coords'
 import { loadFont, type LoadedFont } from '../lib/fonts/fontLoader'
 import { hasDevanagari } from '../lib/fonts/fontMatcher'
@@ -7,6 +7,7 @@ import { layoutText } from '../lib/text/layoutText'
 import { usePdfStore, type EditObject, type TextObject } from '../store/usePdfStore'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useMobileStore } from '../store/useMobileStore'
+import MobileObjectBox from './mobile/MobileObjectBox'
 
 type ObjectViewProps = {
   object: EditObject
@@ -396,7 +397,6 @@ export default function ObjectView({ object, zoom }: ObjectViewProps) {
   const selected = selectedId === object.id
   const isMobile = useIsMobile()
   const mobileMode = useMobileStore((state) => state.mode)
-  const commitTextEditor = useMobileStore((state) => state.commitTextEditor)
 
   if (object.type === 'text') {
     return <TextView object={object} zoom={zoom} />
@@ -438,52 +438,14 @@ export default function ObjectView({ object, zoom }: ObjectViewProps) {
   }
 
   if (isMobile) {
-    const isViewMode = mobileMode === 'view'
-    const handleMobileSelect = isViewMode
-      ? undefined
-      : (event: MouseEvent<HTMLDivElement>) => {
-          event.stopPropagation()
-          commitTextEditor()
-          selectObject(object.id)
-        }
-
-    if (object.type === 'whiteout' || object.type === 'highlight') {
-      return (
-        <div
-          className={`absolute ${isViewMode ? 'pointer-events-none' : ''} ${
-            object.type === 'whiteout' ? 'bg-white' : 'bg-yellow-300/40'
-          } ${!isViewMode && selected ? 'ring-2 ring-brand-500' : ''}`}
-          style={{
-            left: position.x,
-            top: position.y,
-            width: object.width * zoom,
-            height: object.height * zoom,
-            touchAction: 'pan-x pan-y pinch-zoom',
-          }}
-          onClick={handleMobileSelect}
-        />
-      )
-    }
-    if (object.type === 'image') {
-      return (
-        <div
-          className={`absolute ${isViewMode ? 'pointer-events-none' : ''} ${
-            !isViewMode && selected ? 'ring-2 ring-brand-500' : ''
-          }`}
-          style={{
-            left: position.x,
-            top: position.y,
-            width: object.width * zoom,
-            height: object.height * zoom,
-            touchAction: 'pan-x pan-y pinch-zoom',
-          }}
-          onClick={handleMobileSelect}
-        >
-          <img src={object.dataUrl} alt="Added PDF" className="h-full w-full object-contain" draggable={false} />
-        </div>
-      )
-    }
-    return null
+    return (
+      <MobileObjectBox
+        object={object}
+        zoom={zoom}
+        isViewMode={mobileMode === 'view'}
+        selected={selected}
+      />
+    )
   }
 
   if (object.type === 'whiteout' || object.type === 'highlight') {

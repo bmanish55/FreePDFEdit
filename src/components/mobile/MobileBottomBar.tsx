@@ -1,3 +1,4 @@
+import { useRef, type ChangeEvent } from 'react'
 import {
   Check,
   Eraser,
@@ -14,21 +15,49 @@ import {
 import { useMobileStore } from '../../store/useMobileStore'
 import { usePdfStore, type ActiveTool } from '../../store/usePdfStore'
 import Button from '../ui/Button'
+import { createMobileImageObject } from './mobileImageHelper'
 
 type MobileBottomBarProps = {
   onFitWidth: () => void
 }
 
 export default function MobileBottomBar({ onFitWidth }: MobileBottomBarProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const mode = useMobileStore((state) => state.mode)
   const setMode = useMobileStore((state) => state.setMode)
   const showHint = useMobileStore((state) => state.showHint)
+  const commitTextEditor = useMobileStore((state) => state.commitTextEditor)
+  const closeTextEditor = useMobileStore((state) => state.closeTextEditor)
+
   const zoom = usePdfStore((state) => state.zoom)
   const setZoom = usePdfStore((state) => state.setZoom)
   const activeTool = usePdfStore((state) => state.activeTool)
   const setActiveTool = usePdfStore((state) => state.setActiveTool)
+  const visiblePage = usePdfStore((state) => state.visiblePage)
+  const addObject = usePdfStore((state) => state.addObject)
+  const undo = usePdfStore((state) => state.undo)
+  const deleteSelected = usePdfStore((state) => state.deleteSelected)
   const selectedId = usePdfStore((state) => state.selectedId)
   const historyLength = usePdfStore((state) => state.history.length)
+
+  const handleImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file || (file.type !== 'image/png' && file.type !== 'image/jpeg')) {
+      setActiveTool('select')
+      return
+    }
+    try {
+      const imageObject = await createMobileImageObject(file, visiblePage)
+      commitTextEditor()
+      addObject(imageObject)
+      showHint('Drag to move, use the corner to resize')
+    } catch {
+      // Ignore unreadable image files
+    } finally {
+      setActiveTool('select')
+    }
+  }
 
   const handleSelectTool = (tool: ActiveTool) => {
     if (tool === 'select') {
@@ -37,6 +66,15 @@ export default function MobileBottomBar({ onFitWidth }: MobileBottomBarProps) {
     } else if (tool === 'addText') {
       setActiveTool('addText')
       showHint('Tap on the page to add text')
+    } else if (tool === 'addImage') {
+      setActiveTool('addImage')
+      fileInputRef.current?.click()
+    } else if (tool === 'whiteout') {
+      setActiveTool('whiteout')
+      showHint('Tap to place a box, then drag to move or resize')
+    } else if (tool === 'highlight') {
+      setActiveTool('highlight')
+      showHint('Tap to place a highlight, then drag to move or resize')
     }
   }
 
@@ -54,6 +92,14 @@ export default function MobileBottomBar({ onFitWidth }: MobileBottomBarProps) {
       className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg"
+        className="sr-only"
+        onChange={(event) => void handleImageChange(event)}
+      />
+
       {mode === 'view' ? (
         <div className="flex h-14 items-center justify-evenly px-2">
           <Button
@@ -140,7 +186,10 @@ export default function MobileBottomBar({ onFitWidth }: MobileBottomBarProps) {
           <button
             type="button"
             disabled={historyLength === 0}
-            onClick={() => {}}
+            onClick={() => {
+              commitTextEditor()
+              undo()
+            }}
             aria-label="Undo"
             title="Undo"
             className={`flex h-14 w-14 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
@@ -156,7 +205,10 @@ export default function MobileBottomBar({ onFitWidth }: MobileBottomBarProps) {
           <button
             type="button"
             disabled={!selectedId}
-            onClick={() => {}}
+            onClick={() => {
+              closeTextEditor()
+              deleteSelected()
+            }}
             aria-label="Delete"
             title="Delete"
             className={`flex h-14 w-14 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
