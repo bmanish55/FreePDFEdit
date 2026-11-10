@@ -95,7 +95,7 @@ export default function MobileEditorShell({
           <AdSlot position="top" />
         </div>
 
-        {textWarning && (
+        {textWarning && !editingTextId && (
           <div className="px-4 pt-3">
             <Notice
               tone={textWarning.toLowerCase().includes('reduced') ? 'warning' : 'error'}
