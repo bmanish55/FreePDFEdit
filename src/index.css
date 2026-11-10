@@ -19,3 +19,19 @@ body { @apply bg-slate-50 font-sans text-slate-800 antialiased; }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
+
+.mobile-mode .pdf-pages,
+.mobile-mode .pdf-pages * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.mobile-mode .pdf-pages canvas {
+  pointer-events: none;      /* long-press on the canvas must not open "save image" */
+}
+.mobile-mode .pdf-pages input,
+.mobile-mode .pdf-pages textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}

@@ -13,6 +13,7 @@ import Toolbar from './components/Toolbar'
 import Notice from './components/ui/Notice'
 import { exportPdf } from './lib/exportPdf'
 import { usePdfStore } from './store/usePdfStore'
+import { useIsMobile } from './hooks/useIsMobile'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 
@@ -30,6 +31,18 @@ export default function App() {
   const [pdfDocument, setPdfDocument] = useState<pdfjsLib.PDFDocumentProxy | null>(null)
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const isMobile = useIsMobile()
+
+  useEffect(() => {
+    if (isMobile) {
+      document.body.classList.add('mobile-mode')
+    } else {
+      document.body.classList.remove('mobile-mode')
+    }
+    return () => {
+      document.body.classList.remove('mobile-mode')
+    }
+  }, [isMobile])
 
   const handleFile = async (file: File) => {
     if (file.type !== 'application/pdf') {
