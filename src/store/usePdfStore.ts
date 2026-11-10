@@ -65,6 +65,7 @@ type PdfState = {
   isFeedbackModalOpen: boolean
   setFeedbackModalOpen: (open: boolean) => void
   setPdf: (pdfBytes: Uint8Array, fileName: string, numPages: number) => void
+  restoreSession: (pdfBytes: Uint8Array, fileName: string, numPages: number, objects: EditObject[]) => void
   setZoom: (zoom: number) => void
   setActiveTool: (activeTool: ActiveTool) => void
   setVisiblePage: (visiblePage: number) => void
@@ -92,7 +93,9 @@ export const usePdfStore = create<PdfState>((set) => ({
   setAiModalOpen: (isAiModalOpen) => set({ isAiModalOpen }),
   isFeedbackModalOpen: false,
   setFeedbackModalOpen: (isFeedbackModalOpen) => set({ isFeedbackModalOpen }),
-  setPdf: (pdfBytes, fileName, numPages) => set({ pdfBytes, fileName, numPages, zoom: 1 }),
+  setPdf: (pdfBytes, fileName, numPages) => set({ pdfBytes, fileName, numPages, zoom: 1, objects: [], selectedId: null, visiblePage: 1, history: [], textWarning: null }),
+  restoreSession: (pdfBytes, fileName, numPages, objects) =>
+    set({ pdfBytes, fileName, numPages, objects, zoom: 1, selectedId: null, visiblePage: 1, history: [], textWarning: null }),
   setZoom: (zoom) => set({ zoom: Math.min(2, Math.max(0.5, zoom)) }),
   setActiveTool: (activeTool) => set({ activeTool }),
   setVisiblePage: (visiblePage) => set({ visiblePage }),

@@ -12,9 +12,11 @@ import MobileEditorShell from './components/mobile/MobileEditorShell'
 import PdfPage from './components/PdfPage'
 import Toolbar from './components/Toolbar'
 import Notice from './components/ui/Notice'
+import RefreshConfirmModal from './components/RefreshConfirmModal'
 import { exportPdf } from './lib/exportPdf'
 import { usePdfStore } from './store/usePdfStore'
 import { useIsMobile } from './hooks/useIsMobile'
+import { useUnsavedGuard } from './hooks/useUnsavedGuard'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 
@@ -23,6 +25,7 @@ export default function App() {
   const numPages = usePdfStore((state) => state.numPages)
   const zoom = usePdfStore((state) => state.zoom)
   const setPdf = usePdfStore((state) => state.setPdf)
+  const restoreSession = usePdfStore((state) => state.restoreSession)
   const objects = usePdfStore((state) => state.objects)
   const fileName = usePdfStore((state) => state.fileName)
   const textWarning = usePdfStore((state) => state.textWarning)
@@ -33,6 +36,16 @@ export default function App() {
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const isMobile = useIsMobile()
+  const {
+    pendingDraft,
+    isRefreshModalOpen,
+    closeRefreshModal,
+    confirmRefresh,
+    markPdfOpened,
+    markRestored,
+    markDownloaded,
+    discardDraft,
+  } = useUnsavedGuard({ pdfBytes, fileName, objects })
 
   useEffect(() => {
     if (isMobile) {
@@ -58,6 +71,7 @@ export default function App() {
       const loadedDocument = await pdfjsLib.getDocument({ data: bytes.slice() }).promise
       setPdf(bytes, file.name, loadedDocument.numPages)
       setPdfDocument(loadedDocument)
+      markPdfOpened(bytes, file.name)
     } catch {
       setError('This PDF could not be opened. It may be corrupt or password-protected.')
     } finally {
@@ -70,9 +84,27 @@ export default function App() {
     try {
       setError('')
       await exportPdf(pdfBytes, objects, fileName)
+      markDownloaded()
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Some characters could not be encoded. Please remove unsupported symbols.'
       setError(msg)
+    }
+  }
+
+  const handleRestoreDraft = async () => {
+    if (!pendingDraft) return
+    setError('')
+    setIsLoading(true)
+    try {
+      const loadedDocument = await pdfjsLib.getDocument({ data: pendingDraft.pdfBytes.slice() }).promise
+      restoreSession(pendingDraft.pdfBytes, pendingDraft.fileName, loadedDocument.numPages, pendingDraft.objects)
+      setPdfDocument(loadedDocument)
+      markRestored(pendingDraft.pdfBytes, pendingDraft.fileName, pendingDraft.objects)
+    } catch {
+      await discardDraft()
+      setError('Saved draft could not be restored.')
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -104,6 +136,11 @@ export default function App() {
           isOpen={isFeedbackModalOpen}
           onClose={() => setFeedbackModalOpen(false)}
         />
+        <RefreshConfirmModal
+          isOpen={isRefreshModalOpen}
+          onCancel={closeRefreshModal}
+          onConfirm={confirmRefresh}
+        />
       </>
     )
   }
@@ -118,6 +155,9 @@ export default function App() {
             onFile={(file) => void handleFile(file)}
             error={error}
             isLoading={isLoading}
+            pendingDraft={pendingDraft}
+            onRestoreDraft={() => void handleRestoreDraft()}
+            onDiscardDraft={() => void discardDraft()}
           />
         ) : (
           <div className="min-h-full bg-slate-100">
@@ -193,6 +233,11 @@ export default function App() {
       <FeedbackModal
         isOpen={isFeedbackModalOpen}
         onClose={() => setFeedbackModalOpen(false)}
+      />
+      <RefreshConfirmModal
+        isOpen={isRefreshModalOpen}
+        onCancel={closeRefreshModal}
+        onConfirm={confirmRefresh}
       />
     </div>
   )

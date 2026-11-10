@@ -1,4 +1,5 @@
-import { AlertTriangle, Loader2, MousePointerClick, ShieldCheck, Zap } from 'lucide-react'
+import { AlertTriangle, History, Loader2, MousePointerClick, ShieldCheck, Zap } from 'lucide-react'
+import type { SavedDraft } from '../lib/storage/draftStorage'
 import AdSlot from './AdSlot'
 import Button from './ui/Button'
 import Notice from './ui/Notice'
@@ -8,9 +9,19 @@ type LandingViewProps = {
   onFile: (file: File) => void
   error?: string
   isLoading?: boolean
+  pendingDraft?: SavedDraft | null
+  onRestoreDraft?: () => void
+  onDiscardDraft?: () => void
 }
 
-export default function LandingView({ onFile, error, isLoading }: LandingViewProps) {
+export default function LandingView({
+  onFile,
+  error,
+  isLoading,
+  pendingDraft,
+  onRestoreDraft,
+  onDiscardDraft,
+}: LandingViewProps) {
   return (
     <div className="flex flex-col">
       {/* A. Hero */}
@@ -46,6 +57,29 @@ export default function LandingView({ onFile, error, isLoading }: LandingViewPro
               <div className="mb-4 flex items-center justify-center gap-2 text-sm text-slate-600" role="status">
                 <Loader2 size={18} strokeWidth={2} className="animate-spin text-brand-600" />
                 <span>Loading PDF...</span>
+              </div>
+            )}
+            {pendingDraft && onRestoreDraft && onDiscardDraft && (
+              <div className="mb-4 flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-brand-200 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+                    <History size={18} strokeWidth={2} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-900">Unsaved PDF session found</p>
+                    <p className="truncate text-xs text-slate-500" title={pendingDraft.fileName}>
+                      {pendingDraft.fileName} · {pendingDraft.objects.length} edit{pendingDraft.objects.length === 1 ? '' : 's'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Button variant="ghost" size="sm" onClick={onDiscardDraft} disabled={isLoading}>
+                    Discard
+                  </Button>
+                  <Button variant="primary" size="sm" onClick={onRestoreDraft} disabled={isLoading}>
+                    Restore
+                  </Button>
+                </div>
               </div>
             )}
             <UploadZone onFile={onFile} />

@@ -27,7 +27,7 @@ function TextView({ object, zoom }: { object: TextObject; zoom: number }) {
   const commitTextEditor = useMobileStore((state) => state.commitTextEditor)
 
   const [font, setFont] = useState<LoadedFont | null>(null)
-  const [editing, setEditing] = useState(true)
+  const [editing, setEditing] = useState(() => selectedId === object.id)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const dragStart = useRef({ x: 0, y: 0 })

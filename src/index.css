@@ -35,3 +35,8 @@ body { @apply bg-slate-50 font-sans text-slate-800 antialiased; }
   -webkit-user-select: text;
   user-select: text;
 }
+
+html.pdf-session-active,
+body.pdf-session-active {
+  overscroll-behavior-y: contain;
+}
