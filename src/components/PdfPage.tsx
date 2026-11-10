@@ -35,6 +35,7 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
   const mobileMode = useMobileStore((state) => state.mode)
   const openTextEditor = useMobileStore((state) => state.openTextEditor)
   const commitTextEditor = useMobileStore((state) => state.commitTextEditor)
+  const [isFarFromViewport, setIsFarFromViewport] = useState(false)
 
   useEffect(() => {
     const container = containerRef.current
@@ -51,6 +52,77 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
   }, [pageNumber, setVisiblePage])
 
   useEffect(() => {
+    if (!isMobile) {
+      setIsFarFromViewport(false)
+      return
+    }
+    const container = containerRef.current
+    if (!container) return
+    const farObserver = new IntersectionObserver(
+      ([entry]) => {
+        const far = !entry.isIntersecting
+        setIsFarFromViewport(far)
+        if (far && canvasRef.current) {
+          canvasRef.current.width = 0
+          canvasRef.current.height = 0
+        }
+      },
+      { rootMargin: '200% 0px' },
+    )
+    farObserver.observe(container)
+    return () => farObserver.disconnect()
+  }, [isMobile])
+
+  useEffect(() => {
+    if (isMobile) {
+      if (!isNearViewport || isFarFromViewport) return
+      let cancelled = false
+      let renderTask: { cancel: () => void; promise: Promise<void> } | null = null
+      const renderMobilePage = async () => {
+        try {
+          const page = await document.getPage(pageNumber)
+          const viewport = page.getViewport({ scale: zoom })
+          if (cancelled) return
+          const canvas = canvasRef.current
+          if (!canvas) return
+
+          const MAX_CANVAS_PIXELS = 12_000_000
+          let pixelRatio = Math.min(window.devicePixelRatio || 1, 2)
+          let canvasWidth = Math.ceil(viewport.width * pixelRatio)
+          let canvasHeight = Math.ceil(viewport.height * pixelRatio)
+          if (canvasWidth * canvasHeight > MAX_CANVAS_PIXELS) {
+            pixelRatio = Math.sqrt(MAX_CANVAS_PIXELS / (viewport.width * viewport.height))
+            canvasWidth = Math.max(1, Math.floor(viewport.width * pixelRatio))
+            canvasHeight = Math.max(1, Math.floor(viewport.height * pixelRatio))
+          }
+
+          canvas.width = canvasWidth
+          canvas.height = canvasHeight
+          canvas.style.width = `${viewport.width}px`
+          canvas.style.height = `${viewport.height}px`
+          setDimensions({ width: viewport.width, height: viewport.height })
+
+          const context = canvas.getContext('2d')
+          if (!context) return
+          context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
+          renderTask = page.render({ canvasContext: context, viewport })
+          await renderTask.promise
+
+          const extractedRuns = await extractText(page, pageNumber, canvas)
+          if (!cancelled) {
+            setTextRuns(extractedRuns)
+          }
+        } catch {
+          if (!cancelled) setRenderError('This page could not be rendered.')
+        }
+      }
+      void renderMobilePage()
+      return () => {
+        cancelled = true
+        renderTask?.cancel()
+      }
+    }
+
     if (!isNearViewport) return
     let cancelled = false
     const renderPage = async () => {
@@ -84,7 +156,7 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
     return () => {
       cancelled = true
     }
-  }, [document, isNearViewport, pageNumber, zoom])
+  }, [document, isFarFromViewport, isMobile, isNearViewport, pageNumber, zoom])
 
   const textTouchStart = useRef<{ x: number; y: number; time: number } | null>(null)
   const overlayTouchStart = useRef<{ x: number; y: number; time: number } | null>(null)
@@ -321,7 +393,10 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
 
     return (
       <div ref={containerRef} className="mx-auto shrink-0">
-        <div className="relative bg-white shadow-md ring-1 ring-slate-200">
+        <div
+          className="relative bg-white shadow-md ring-1 ring-slate-200"
+          style={dimensions.width > 0 ? { width: dimensions.width, height: dimensions.height } : undefined}
+        >
           <canvas
             ref={canvasRef}
             aria-label={`PDF page ${pageNumber}`}
