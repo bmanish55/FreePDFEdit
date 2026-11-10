@@ -1,7 +1,15 @@
+import { useEffect, useRef } from 'react'
+
 type AdPosition = 'top' | 'side' | 'bottom'
 
 type AdSlotProps = {
   position: AdPosition
+}
+
+declare global {
+  interface Window {
+    adsbygoogle?: unknown[]
+  }
 }
 
 const positionStyles: Record<AdPosition, string> = {
@@ -10,15 +18,55 @@ const positionStyles: Record<AdPosition, string> = {
   bottom: 'h-[100px] max-w-[728px] mx-auto',
 }
 
+function getSlotId(position: AdPosition): string {
+  if (position === 'top') return import.meta.env.VITE_ADSENSE_SLOT_TOP || ''
+  if (position === 'side') return import.meta.env.VITE_ADSENSE_SLOT_SIDE || ''
+  return import.meta.env.VITE_ADSENSE_SLOT_BOTTOM || ''
+}
+
+function ensureAdSenseScript(client: string): void {
+  const existing = document.querySelector(`script[data-adsense-client="${client}"]`)
+  if (existing) return
+
+  const script = document.createElement('script')
+  script.async = true
+  script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}`
+  script.crossOrigin = 'anonymous'
+  script.dataset.adsenseClient = client
+  document.head.appendChild(script)
+}
+
 export default function AdSlot({ position }: AdSlotProps) {
   const isDevelopment = import.meta.env.DEV
   const showAds = import.meta.env.VITE_SHOW_ADS === 'true'
+  const adClient = (import.meta.env.VITE_ADSENSE_CLIENT || '').trim()
+  const adSlot = getSlotId(position).trim()
+  const pushedRef = useRef(false)
 
-  if (!isDevelopment && !showAds) return null
+  useEffect(() => {
+    if (isDevelopment || !showAds || !adClient || !adSlot || pushedRef.current) return
+    ensureAdSenseScript(adClient)
+    try {
+      ;(window.adsbygoogle = window.adsbygoogle || []).push({})
+      pushedRef.current = true
+    } catch {
+      // Ignore ad blocker or duplicate slot initialization errors
+    }
+  }, [isDevelopment, showAds, adClient, adSlot])
 
   if (!isDevelopment) {
-    // real ad code goes here
-    return <aside aria-label={`${position} advertisement`} className={positionStyles[position]} />
+    if (!showAds || !adClient || !adSlot) return null
+    return (
+      <aside aria-label={`${position} advertisement`} className={positionStyles[position]}>
+        <ins
+          className="adsbygoogle block h-full w-full"
+          data-ad-client={adClient}
+          data-ad-slot={adSlot}
+          data-ad-format="auto"
+          data-full-width-responsive="true"
+        />
+      </aside>
+    )
   }
 
   return (

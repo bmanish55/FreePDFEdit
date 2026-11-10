@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { AlertTriangle, Sparkles } from 'lucide-react'
@@ -10,17 +10,23 @@ import Header from './components/Header'
 import LandingView from './components/LandingView'
 import MobileEditorShell from './components/mobile/MobileEditorShell'
 import PdfPage from './components/PdfPage'
-import Toolbar from './components/Toolbar'
-import Notice from './components/ui/Notice'
 import RefreshConfirmModal from './components/RefreshConfirmModal'
-import { exportPdf } from './lib/exportPdf'
-import { usePdfStore } from './store/usePdfStore'
+import Toolbar from './components/Toolbar'
+import AboutPage from './components/pages/AboutPage'
+import ContactPage from './components/pages/ContactPage'
+import PrivacyPolicyPage from './components/pages/PrivacyPolicyPage'
+import TermsPage from './components/pages/TermsPage'
+import Notice from './components/ui/Notice'
 import { useIsMobile } from './hooks/useIsMobile'
 import { useUnsavedGuard } from './hooks/useUnsavedGuard'
+import { exportPdf } from './lib/exportPdf'
+import { applyRouteMetadata, normalizeRoute, type AppRoute } from './lib/siteConfig'
+import { usePdfStore } from './store/usePdfStore'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 
 export default function App() {
+  const [route, setRoute] = useState<AppRoute>(() => normalizeRoute(window.location.pathname))
   const pdfBytes = usePdfStore((state) => state.pdfBytes)
   const numPages = usePdfStore((state) => state.numPages)
   const zoom = usePdfStore((state) => state.zoom)
@@ -46,6 +52,27 @@ export default function App() {
     markDownloaded,
     discardDraft,
   } = useUnsavedGuard({ pdfBytes, fileName, objects })
+
+  const navigate = useCallback((nextRoute: AppRoute) => {
+    const target = normalizeRoute(nextRoute)
+    if (target !== normalizeRoute(window.location.pathname)) {
+      window.history.pushState(null, '', target)
+    }
+    setRoute(target)
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  }, [])
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setRoute(normalizeRoute(window.location.pathname))
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
+  useEffect(() => {
+    applyRouteMetadata(route)
+  }, [route])
 
   useEffect(() => {
     if (isMobile) {
@@ -123,7 +150,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  if (isMobile && pdfBytes && pdfDocument) {
+  if (route === '/' && isMobile && pdfBytes && pdfDocument) {
     return (
       <>
         <MobileEditorShell
@@ -145,89 +172,120 @@ export default function App() {
     )
   }
 
-  return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
-      <DesktopNotice />
-      <Header onDownload={() => void handleDownload()} hasPdf={Boolean(pdfBytes)} />
-      <main className="flex-1">
-        {!pdfBytes || !pdfDocument ? (
-          <LandingView
-            onFile={(file) => void handleFile(file)}
-            error={error}
-            isLoading={isLoading}
-            pendingDraft={pendingDraft}
-            onRestoreDraft={() => void handleRestoreDraft()}
-            onDiscardDraft={() => void discardDraft()}
-          />
-        ) : (
-          <div className="min-h-full bg-slate-100">
-            <Toolbar />
+  const renderPageContent = () => {
+    if (route === '/about') {
+      return <AboutPage hasPdf={Boolean(pdfBytes)} onNavigate={navigate} />
+    }
+    if (route === '/privacy-policy') {
+      return <PrivacyPolicyPage hasPdf={Boolean(pdfBytes)} onNavigate={navigate} />
+    }
+    if (route === '/terms') {
+      return <TermsPage hasPdf={Boolean(pdfBytes)} onNavigate={navigate} />
+    }
+    if (route === '/contact') {
+      return (
+        <ContactPage
+          hasPdf={Boolean(pdfBytes)}
+          onNavigate={navigate}
+          onOpenFeedbackModal={() => setFeedbackModalOpen(true)}
+        />
+      )
+    }
 
-            {/* Notices below toolbar */}
-            {textWarning && (
-              <div className="mx-auto max-w-7xl px-4 pt-3">
-                <Notice
-                  tone={textWarning.toLowerCase().includes('reduced') ? 'warning' : 'error'}
-                  icon={<AlertTriangle size={18} strokeWidth={2} />}
+    if (!pdfBytes || !pdfDocument) {
+      return (
+        <LandingView
+          onFile={(file) => void handleFile(file)}
+          error={error}
+          isLoading={isLoading}
+          pendingDraft={pendingDraft}
+          onRestoreDraft={() => void handleRestoreDraft()}
+          onDiscardDraft={() => void discardDraft()}
+          onNavigate={navigate}
+        />
+      )
+    }
+
+    return (
+      <div className="min-h-full bg-slate-100">
+        <Toolbar />
+
+        {/* Notices below toolbar */}
+        {textWarning && (
+          <div className="mx-auto max-w-7xl px-4 pt-3">
+            <Notice
+              tone={textWarning.toLowerCase().includes('reduced') ? 'warning' : 'error'}
+              icon={<AlertTriangle size={18} strokeWidth={2} />}
+            >
+              <div className="flex w-full items-center justify-between gap-3">
+                <span>{textWarning}</span>
+                <button
+                  onClick={() => setAiModalOpen(true)}
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-200"
                 >
-                  <div className="flex w-full items-center justify-between gap-3">
-                    <span>{textWarning}</span>
-                    <button
-                      onClick={() => setAiModalOpen(true)}
-                      className="inline-flex cursor-pointer items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900 hover:bg-amber-200 transition-colors"
-                    >
-                      <Sparkles size={13} className="text-amber-700" />
-                      <span>Fit with AI</span>
-                    </button>
-                  </div>
-                </Notice>
+                  <Sparkles size={13} className="text-amber-700" />
+                  <span>Fit with AI</span>
+                </button>
               </div>
-            )}
-            {error && (
-              <div className="mx-auto max-w-7xl px-4 pt-3">
-                <Notice tone="error" icon={<AlertTriangle size={18} strokeWidth={2} />}>
-                  {error}
-                </Notice>
-              </div>
-            )}
-
-            {/* Workspace */}
-            <div className="mx-auto flex max-w-7xl gap-6 px-4 py-6">
-              {/* Left (main) column */}
-              <div className="min-w-0 flex-1 overflow-x-auto [touch-action:pan-x_pan-y] [-webkit-overflow-scrolling:touch]">
-                {isLoading && (
-                  <p role="status" className="mb-4 text-center text-sm text-slate-600">
-                    Loading PDF...
-                  </p>
-                )}
-                <div className="flex flex-col gap-6" aria-label="PDF pages">
-                  {Array.from({ length: numPages }, (_, index) => (
-                    <PdfPage
-                      key={index + 1}
-                      document={pdfDocument}
-                      pageNumber={index + 1}
-                      zoom={zoom}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {/* Right column (ad) */}
-              <div className="hidden xl:block w-[300px] shrink-0">
-                <div className="sticky top-32">
-                  <AdSlot position="side" />
-                </div>
-              </div>
-            </div>
-
-            {/* Bottom ad slot */}
-            <div className="mx-auto max-w-7xl px-4 pb-8">
-              <AdSlot position="bottom" />
-            </div>
+            </Notice>
           </div>
         )}
-      </main>
-      <Footer />
+        {error && (
+          <div className="mx-auto max-w-7xl px-4 pt-3">
+            <Notice tone="error" icon={<AlertTriangle size={18} strokeWidth={2} />}>
+              {error}
+            </Notice>
+          </div>
+        )}
+
+        {/* Workspace */}
+        <div className="mx-auto flex max-w-7xl gap-6 px-4 py-6">
+          {/* Left (main) column */}
+          <div className="min-w-0 flex-1 overflow-x-auto [touch-action:pan-x_pan-y] [-webkit-overflow-scrolling:touch]">
+            {isLoading && (
+              <p role="status" className="mb-4 text-center text-sm text-slate-600">
+                Loading PDF...
+              </p>
+            )}
+            <div className="flex flex-col gap-6" aria-label="PDF pages">
+              {Array.from({ length: numPages }, (_, index) => (
+                <PdfPage
+                  key={index + 1}
+                  document={pdfDocument}
+                  pageNumber={index + 1}
+                  zoom={zoom}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Right column (ad) */}
+          <div className="hidden w-[300px] shrink-0 xl:block">
+            <div className="sticky top-32">
+              <AdSlot position="side" />
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom ad slot */}
+        <div className="mx-auto max-w-7xl px-4 pb-8">
+          <AdSlot position="bottom" />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex min-h-screen flex-col bg-slate-50">
+      {route === '/' && <DesktopNotice />}
+      <Header
+        onDownload={() => void handleDownload()}
+        hasPdf={Boolean(pdfBytes)}
+        currentRoute={route}
+        onNavigate={navigate}
+      />
+      <main className="flex-1">{renderPageContent()}</main>
+      <Footer currentRoute={route} onNavigate={navigate} />
 
       {/* Feedback Modal */}
       <FeedbackModal

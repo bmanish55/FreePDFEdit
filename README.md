@@ -4,6 +4,7 @@
 
 **A lightning-fast, 100% private in-browser PDF editor with precision font matching and local AI text fitting.**
 
+[![Live Demo](https://img.shields.io/badge/Live_Demo-freepdfediting.netlify.app-4f46e5?style=flat-square&logo=netlify)](https://freepdfediting.netlify.app/)
 [![React](https://img.shields.io/badge/React-18-blue?style=flat-square&logo=react)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178c6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-v4-38bdf8?style=flat-square&logo=tailwind-css)](https://tailwindcss.com/)
@@ -15,6 +16,8 @@
 
 > **Zero uploads. No signup. No watermarks. Free forever.**  
 > Everything runs strictly inside your web browser — your private documents never touch any server.
+
+**[Launch FreePDFEdit → https://freepdfediting.netlify.app/](https://freepdfediting.netlify.app/)**
 
 <br />
 
@@ -123,7 +126,9 @@ To enable local LLM paraphrasing for the AI Smart Fit assistant:
 
 ---
 
-## 🌐 Deploy to Web
+## 🌐 Live Demo & Deploy to Web
+
+- **Live Deployment (Netlify)**: [https://freepdfediting.netlify.app/](https://freepdfediting.netlify.app/)
 
 Deploying FreePDFEdit is effortless since it compiles to 100% static assets:
 

@@ -1,6 +1,8 @@
 import { AlertTriangle, History, Loader2, MousePointerClick, ShieldCheck, Zap } from 'lucide-react'
 import type { SavedDraft } from '../lib/storage/draftStorage'
+import type { AppRoute } from '../lib/siteConfig'
 import AdSlot from './AdSlot'
+import LandingGuideSection from './LandingGuideSection'
 import Button from './ui/Button'
 import Notice from './ui/Notice'
 import UploadZone from './UploadZone'
@@ -12,6 +14,7 @@ type LandingViewProps = {
   pendingDraft?: SavedDraft | null
   onRestoreDraft?: () => void
   onDiscardDraft?: () => void
+  onNavigate?: (route: AppRoute) => void
 }
 
 export default function LandingView({
@@ -21,6 +24,7 @@ export default function LandingView({
   pendingDraft,
   onRestoreDraft,
   onDiscardDraft,
+  onNavigate,
 }: LandingViewProps) {
   return (
     <div className="flex flex-col">
@@ -156,6 +160,9 @@ export default function LandingView({
           </div>
         </div>
       </section>
+
+      {/* E. Rich features guide, privacy details & FAQ */}
+      <LandingGuideSection onNavigate={onNavigate} />
     </div>
   )
 }
