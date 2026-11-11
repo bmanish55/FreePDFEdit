@@ -142,8 +142,24 @@ export default function App() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const el = document.activeElement as HTMLElement | null
-      if (event.key === 'Delete' && el?.tagName !== 'INPUT' && !el?.isContentEditable) {
-        usePdfStore.getState().deleteSelected()
+      const isEditingControl =
+        el?.tagName === 'INPUT' ||
+        el?.tagName === 'TEXTAREA' ||
+        el?.tagName === 'SELECT' ||
+        Boolean(el?.isContentEditable)
+      if (isEditingControl) return
+
+      const store = usePdfStore.getState()
+      if (event.key === 'Delete') {
+        store.deleteSelected()
+      } else if (event.key === 'Escape') {
+        if (store.mergeSourceId !== null) {
+          store.setMergeSourceId(null)
+        } else if (store.activeTool !== 'select') {
+          store.setActiveTool('select')
+        } else if (store.selectedId !== null) {
+          store.selectObject(null)
+        }
       }
     }
     window.addEventListener('keydown', handleKeyDown)

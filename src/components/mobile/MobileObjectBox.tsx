@@ -20,6 +20,7 @@ export default function MobileObjectBox({
   const selectObject = usePdfStore((state) => state.selectObject)
   const updateObject = usePdfStore((state) => state.updateObject)
   const beginHistory = usePdfStore((state) => state.beginHistory)
+  const activeTool = usePdfStore((state) => state.activeTool)
   const commitTextEditor = useMobileStore((state) => state.commitTextEditor)
 
   const dragStart = useRef({ x: 0, y: 0 })
@@ -30,7 +31,9 @@ export default function MobileObjectBox({
   const resizeHistoryStarted = useRef(false)
 
   const position = pdfToScreen(object, zoom)
-  const canManipulate = !isViewMode && selected
+  const isSelectTool = activeTool === 'select'
+  const canManipulate = !isViewMode && isSelectTool && selected
+  const blockPointer = isViewMode || !isSelectTool
 
   const endDrag = (target: HTMLDivElement, pointerId: number) => {
     if (target.hasPointerCapture(pointerId)) {
@@ -55,7 +58,7 @@ export default function MobileObjectBox({
 
   return (
     <div
-      className={`absolute ${bodyClass} ${isViewMode ? 'pointer-events-none' : ''} ${
+      className={`absolute ${bodyClass} ${blockPointer ? 'pointer-events-none' : ''} ${
         !isViewMode && selected ? 'ring-2 ring-brand-500' : ''
       }`}
       style={{
@@ -104,7 +107,7 @@ export default function MobileObjectBox({
       onPointerCancel={canManipulate ? (e) => endDrag(e.currentTarget, e.pointerId) : undefined}
       onLostPointerCapture={canManipulate ? (e) => endDrag(e.currentTarget, e.pointerId) : undefined}
       onClick={
-        isViewMode
+        blockPointer
           ? undefined
           : (event) => {
               event.stopPropagation()

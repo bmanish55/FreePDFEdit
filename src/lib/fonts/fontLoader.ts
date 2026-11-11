@@ -1,6 +1,13 @@
 ﻿import fontkit from '@pdf-lib/fontkit'
 import type { FontFamilyKey, MatchedFont } from './fontMatcher'
 
+export const LATIN_FONT_FEATURES = {
+  liga: false,
+  dlig: false,
+  clig: false,
+  calt: false,
+} as const
+
 export type LoadedFont = {
   key: string
   bytes: ArrayBuffer
@@ -50,6 +57,11 @@ export function getFontKey(m: MatchedFont): string {
 }
 
 const fontCache = new Map<string, Promise<LoadedFont>>()
+const syncFontCache = new Map<string, LoadedFont>()
+
+export function getCachedLoadedFont(m: MatchedFont): LoadedFont | null {
+  return syncFontCache.get(getFontKey(m)) ?? null
+}
 
 async function fetchFontBytes(url: string): Promise<ArrayBuffer> {
   const response = await fetch(url)
@@ -101,7 +113,7 @@ async function doLoadFont(m: MatchedFont): Promise<LoadedFont> {
         if (face.family === cssFamily) registered = true
       })
       if (!registered) {
-        const face = new FontFace(cssFamily, bytes)
+        const face = new FontFace(cssFamily, bytes.slice(0))
         await face.load()
         document.fonts.add(face)
       }
@@ -114,15 +126,16 @@ async function doLoadFont(m: MatchedFont): Promise<LoadedFont> {
   const unitsPerEm = font.unitsPerEm || 1000
   const ascent = font.ascent / unitsPerEm
   const descent = Math.abs(font.descent) / unitsPerEm
+  const layoutFeatures = resolvedKey.startsWith('devanagari') ? undefined : { ...LATIN_FONT_FEATURES }
 
   const measure = (text: string, fontSize: number): number => {
     if (!text) return 0
-    const glyphRun = font.layout(text)
+    const glyphRun = font.layout(text, layoutFeatures)
     const advanceWidthSum = glyphRun.glyphs.reduce((sum, glyph) => sum + glyph.advanceWidth, 0)
     return (advanceWidthSum / unitsPerEm) * fontSize
   }
 
-  return {
+  const loaded: LoadedFont = {
     key: resolvedKey,
     bytes,
     cssFamily,
@@ -131,6 +144,9 @@ async function doLoadFont(m: MatchedFont): Promise<LoadedFont> {
     descent,
     measure,
   }
+  syncFontCache.set(fontKey, loaded)
+  syncFontCache.set(resolvedKey, loaded)
+  return loaded
 }
 
 export function loadFont(m: MatchedFont): Promise<LoadedFont> {

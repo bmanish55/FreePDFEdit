@@ -3,8 +3,9 @@ import type { MouseEvent, PointerEvent } from 'react'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { screenToPdf } from '../lib/coords'
 import { extractText, type TextRun } from '../lib/text/extractText'
+import { getCoveredRunKeys, isSameHorizontalLine } from '../lib/text/mergeText'
 import ObjectView from './ObjectView'
-import { usePdfStore } from '../store/usePdfStore'
+import { sortObjectsByLayer, usePdfStore, type TextObject } from '../store/usePdfStore'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useMobileStore } from '../store/useMobileStore'
 
@@ -25,17 +26,34 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
   const drawStart = useRef({ x: 0, y: 0 })
   const activeTool = usePdfStore((state) => state.activeTool)
   const allObjects = usePdfStore((state) => state.objects)
-  const objects = allObjects.filter((object) => object.page === pageNumber)
+  const objects = sortObjectsByLayer(allObjects.filter((object) => object.page === pageNumber))
   const addObject = usePdfStore((state) => state.addObject)
   const selectObject = usePdfStore((state) => state.selectObject)
   const setVisiblePage = usePdfStore((state) => state.setVisiblePage)
   const numPages = usePdfStore((state) => state.numPages)
   const setActiveTool = usePdfStore((state) => state.setActiveTool)
+  const setPageTextRuns = usePdfStore((state) => state.setPageTextRuns)
+  const setPageSize = usePdfStore((state) => state.setPageSize)
+  const activeGuides = usePdfStore((state) => state.activeGuides)
+  const mergeSourceId = usePdfStore((state) => state.mergeSourceId)
+  const setMergeSourceId = usePdfStore((state) => state.setMergeSourceId)
+  const mergeWithTarget = usePdfStore((state) => state.mergeWithTarget)
   const isMobile = useIsMobile()
   const mobileMode = useMobileStore((state) => state.mode)
   const openTextEditor = useMobileStore((state) => state.openTextEditor)
   const commitTextEditor = useMobileStore((state) => state.commitTextEditor)
   const [isFarFromViewport, setIsFarFromViewport] = useState(false)
+
+  const coveredKeys = getCoveredRunKeys(objects)
+  const uncoveredRuns = textRuns.filter((run) => !coveredKeys.has(run.key))
+  const mergeSourceObj =
+    mergeSourceId !== null
+      ? allObjects.find(
+          (obj): obj is TextObject =>
+            obj.id === mergeSourceId && obj.type === 'text' && obj.page === pageNumber,
+        ) ?? null
+      : null
+  const pageGuides = activeGuides.filter((guide) => guide.page === pageNumber)
 
   useEffect(() => {
     const container = containerRef.current
@@ -110,7 +128,10 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
 
           const extractedRuns = await extractText(page, pageNumber, canvas)
           if (!cancelled) {
+            const baseViewport = page.getViewport({ scale: 1 })
+            setPageSize(pageNumber, { width: baseViewport.width, height: baseViewport.height })
             setTextRuns(extractedRuns)
+            setPageTextRuns(pageNumber, extractedRuns)
           }
         } catch {
           if (!cancelled) setRenderError('This page could not be rendered.')
@@ -146,7 +167,10 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
         // Run extraction AFTER canvas finished rendering
         const extractedRuns = await extractText(page, pageNumber, canvas)
         if (!cancelled) {
+          const baseViewport = page.getViewport({ scale: 1 })
+          setPageSize(pageNumber, { width: baseViewport.width, height: baseViewport.height })
           setTextRuns(extractedRuns)
+          setPageTextRuns(pageNumber, extractedRuns)
         }
       } catch {
         if (!cancelled) setRenderError('This page could not be rendered.')
@@ -162,6 +186,10 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
   const overlayTouchStart = useRef<{ x: number; y: number; time: number } | null>(null)
 
   const handleOverlayPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (mergeSourceId !== null) {
+      setMergeSourceId(null)
+      return
+    }
     if (activeTool === 'whiteout' || activeTool === 'highlight') {
       const bounds = event.currentTarget.getBoundingClientRect()
       drawStart.current = screenToPdf({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, zoom)
@@ -200,13 +228,20 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
     }
 
     if (activeTool === 'whiteout' || activeTool === 'highlight') {
+      const bounds = event.currentTarget.getBoundingClientRect()
+      const point = screenToPdf({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, zoom)
+      const rect = {
+        x: Math.min(drawStart.current.x, point.x),
+        y: Math.min(drawStart.current.y, point.y),
+        width: Math.abs(point.x - drawStart.current.x),
+        height: Math.abs(point.y - drawStart.current.y),
+      }
       const minDimension = event.pointerType === 'touch' ? 12 : 5
-      if (!drawPreview || drawPreview.width < minDimension || drawPreview.height < minDimension) {
-        setDrawPreview(null)
+      setDrawPreview(null)
+      if (rect.width < minDimension || rect.height < minDimension) {
         return
       }
-      addObject({ id: crypto.randomUUID(), type: activeTool, page: pageNumber, ...drawPreview })
-      setDrawPreview(null)
+      addObject({ id: crypto.randomUUID(), type: activeTool, page: pageNumber, ...rect })
       return
     }
 
@@ -226,7 +261,7 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
           type: 'text',
           page: pageNumber,
           x: point.x,
-          baselineY: point.y + 14,
+          baselineY: point.y + 5,
           text: '',
           fontFamily: 'arimo',
           bold: false,
@@ -235,6 +270,7 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
           color: '#000000',
           original: null,
         })
+        setActiveTool('select')
       }
     }
   }
@@ -263,12 +299,24 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
     }
 
     event.stopPropagation()
+    if (mergeSourceObj) {
+      if (isSameHorizontalLine(mergeSourceObj, run)) {
+        mergeWithTarget(mergeSourceObj.id, { kind: 'run', run })
+      } else {
+        setMergeSourceId(null)
+      }
+      return
+    }
     handleExistingText(run)
   }
 
   const handleExistingText = (run: TextRun) => {
     if (activeTool !== 'select') return
-    const existing = objects.find((object) => object.type === 'text' && object.originalKey === run.key)
+    const existing = objects.find(
+      (object) =>
+        object.type === 'text' &&
+        (object.originalKey === run.key || Boolean(object.coveredKeys?.includes(run.key))),
+    )
     if (existing) {
       selectObject(existing.id)
       return
@@ -289,6 +337,7 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
       original: {
         text: run.text,
         x: run.x,
+        baselineY: run.baselineY,
         width: run.width,
         fontSize: run.fontSize,
         bgColor: run.bgColor,
@@ -302,7 +351,19 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
 
     const handleMobileExistingText = (run: TextRun) => {
       if (isViewMode || activeTool !== 'select') return
-      const existing = objects.find((object) => object.type === 'text' && object.originalKey === run.key)
+      if (mergeSourceObj) {
+        if (isSameHorizontalLine(mergeSourceObj, run)) {
+          mergeWithTarget(mergeSourceObj.id, { kind: 'run', run })
+        } else {
+          setMergeSourceId(null)
+        }
+        return
+      }
+      const existing = objects.find(
+        (object) =>
+          object.type === 'text' &&
+          (object.originalKey === run.key || Boolean(object.coveredKeys?.includes(run.key))),
+      )
       if (existing) {
         if (useMobileStore.getState().editingTextId !== existing.id) {
           commitTextEditor()
@@ -329,6 +390,7 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
         original: {
           text: run.text,
           x: run.x,
+          baselineY: run.baselineY,
           width: run.width,
           fontSize: run.fontSize,
           bgColor: run.bgColor,
@@ -350,7 +412,7 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
           type: 'text',
           page: pageNumber,
           x: point.x,
-          baselineY: point.y + 14,
+          baselineY: point.y + 5,
           text: '',
           fontFamily: 'arimo',
           bold: false,
@@ -410,12 +472,17 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
             >
               {!isViewMode &&
                 activeTool === 'select' &&
-                textRuns
-                  .filter((run) => !objects.some((obj) => obj.type === 'text' && obj.originalKey === run.key))
-                  .map((run) => (
+                uncoveredRuns.map((run) => {
+                  const isMergeTarget =
+                    Boolean(mergeSourceObj) && isSameHorizontalLine(mergeSourceObj!, run)
+                  return (
                     <div
                       key={run.key}
-                      className="absolute"
+                      className={`absolute ${
+                        isMergeTarget
+                          ? 'cursor-pointer bg-emerald-500/15 outline-2 outline-dashed outline-emerald-500'
+                          : ''
+                      }`}
                       style={{
                         left: run.x * zoom,
                         top: (run.baselineY - run.fontSize * 0.9) * zoom,
@@ -429,7 +496,8 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
                         handleMobileExistingText(run)
                       }}
                     />
-                  ))}
+                  )
+                })}
               {objects.map((object) => (
                 <ObjectView key={object.id} object={object} zoom={zoom} />
               ))}
@@ -453,32 +521,71 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
         <canvas ref={canvasRef} aria-label={`PDF page ${pageNumber}`} className={dimensions.width ? 'block' : 'hidden'} />
         {dimensions.width > 0 && (
           <div
-            className="absolute inset-0"
+            className={`absolute inset-0 ${
+              activeTool === 'addText'
+                ? 'cursor-text'
+                : activeTool === 'whiteout' || activeTool === 'highlight'
+                  ? 'cursor-crosshair'
+                  : ''
+            }`}
             style={{ touchAction: activeTool === 'select' ? 'pan-x pan-y' : 'none' }}
             onPointerDown={handleOverlayPointerDown}
             onPointerMove={handleOverlayPointerMove}
             onPointerUp={handleOverlayPointerUp}
           >
             {activeTool === 'select' &&
-              textRuns
-                .filter((run) => !objects.some((obj) => obj.type === 'text' && obj.originalKey === run.key))
-                .map((run) => (
+              uncoveredRuns.map((run) => {
+                const isMergeTarget =
+                  Boolean(mergeSourceObj) && isSameHorizontalLine(mergeSourceObj!, run)
+                return (
                   <div
                     key={run.key}
-                    className="absolute cursor-text hover:bg-brand-500/10"
+                    className={`absolute ${
+                      isMergeTarget
+                        ? 'cursor-pointer bg-emerald-500/15 outline-2 outline-dashed outline-emerald-500'
+                        : 'cursor-text hover:bg-brand-500/10 hover:outline-1 hover:outline-dashed hover:outline-brand-400'
+                    }`}
                     style={{
                       left: run.x * zoom,
                       top: (run.baselineY - run.fontSize * 0.9) * zoom,
                       width: run.width * zoom,
                       height: (run.fontSize * 1.15) * zoom,
                     }}
-                    aria-label={`Edit text: ${run.text}`}
+                    aria-label={
+                      isMergeTarget ? `Merge with: ${run.text}` : `Edit text: ${run.text}`
+                    }
                     onPointerDown={handleTextPointerDown}
                     onPointerUp={(event) => handleTextPointerUp(event, run)}
                   />
-                ))}
+                )
+              })}
             {objects.map((object) => (
               <ObjectView key={object.id} object={object} zoom={zoom} />
+            ))}
+            {pageGuides.map((guide, idx) => (
+              <div
+                key={`${guide.orientation}-${guide.kind}-${idx}`}
+                className="pointer-events-none absolute z-30"
+                style={
+                  guide.orientation === 'v'
+                    ? {
+                        left: guide.pos * zoom,
+                        top: guide.start * zoom,
+                        height: Math.max(1, (guide.end - guide.start) * zoom),
+                        width: 0,
+                        borderLeft:
+                          guide.kind === 'page' ? '1px dashed #e11d48' : '1px solid #e11d48',
+                      }
+                    : {
+                        top: guide.pos * zoom,
+                        left: guide.start * zoom,
+                        width: Math.max(1, (guide.end - guide.start) * zoom),
+                        height: 0,
+                        borderTop:
+                          guide.kind === 'page' ? '1px dashed #e11d48' : '1px solid #e11d48',
+                      }
+                }
+              />
             ))}
             {drawPreview && (
               <div

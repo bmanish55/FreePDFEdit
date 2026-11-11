@@ -67,7 +67,7 @@ export default function MobileBottomBar({ onFitWidth }: MobileBottomBarProps) {
       setActiveTool('addText')
       showHint('Tap on the page to add text')
     } else if (tool === 'addImage') {
-      setActiveTool('addImage')
+      setActiveTool('select')
       fileInputRef.current?.click()
     } else if (tool === 'whiteout') {
       setActiveTool('whiteout')

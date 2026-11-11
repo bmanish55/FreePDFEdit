@@ -51,7 +51,7 @@ export function sampleColors(
     const imageData = ctx.getImageData(minX, minY, regionW, regionH)
     const data = imageData.data
 
-    const bgCounts = new Map<string, { count: number; r: number; g: number; b: number }>()
+    const bgCounts = new Map<string, { count: number; sumR: number; sumG: number; sumB: number }>()
 
     for (let py = minY; py < maxY; py++) {
       for (let px = minX; px < maxX; px++) {
@@ -63,15 +63,15 @@ export function sampleColors(
             const r = data[idx]
             const g = data[idx + 1]
             const b = data[idx + 2]
-            const qr = Math.min(255, Math.floor(r / 8) * 8)
-            const qg = Math.min(255, Math.floor(g / 8) * 8)
-            const qb = Math.min(255, Math.floor(b / 8) * 8)
-            const key = `${qr},${qg},${qb}`
+            const key = `${Math.floor(r / 8)},${Math.floor(g / 8)},${Math.floor(b / 8)}`
             const existing = bgCounts.get(key)
             if (existing) {
               existing.count++
+              existing.sumR += r
+              existing.sumG += g
+              existing.sumB += b
             } else {
-              bgCounts.set(key, { count: 1, r: qr, g: qg, b: qb })
+              bgCounts.set(key, { count: 1, sumR: r, sumG: g, sumB: b })
             }
           }
         }
@@ -87,12 +87,22 @@ export function sampleColors(
     for (const entry of bgCounts.values()) {
       if (entry.count > maxBgCount) {
         maxBgCount = entry.count
-        bgR = entry.r
-        bgG = entry.g
-        bgB = entry.b
-        bgColor = toHex(bgR, bgG, bgB)
+        bgR = Math.round(entry.sumR / entry.count)
+        bgG = Math.round(entry.sumG / entry.count)
+        bgB = Math.round(entry.sumB / entry.count)
       }
     }
+
+    if (bgR >= 248 && bgG >= 248 && bgB >= 248) {
+      bgR = 255
+      bgG = 255
+      bgB = 255
+    } else if (bgR <= 12 && bgG <= 12 && bgB <= 12) {
+      bgR = 0
+      bgG = 0
+      bgB = 0
+    }
+    bgColor = toHex(bgR, bgG, bgB)
 
     let bestDist = 0
     let bestColor = '#000000'

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Sparkles,
   X,
@@ -101,7 +102,7 @@ export default function AiOptimizeModal({
 
   if (!isOpen) return null
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -332,6 +333,7 @@ export default function AiOptimizeModal({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bold, Italic } from 'lucide-react'
+import { Bold, Italic, Merge } from 'lucide-react'
 import type { FontFamilyKey } from '../../lib/fonts/fontMatcher'
+import { getSameLineCandidates } from '../../lib/text/mergeText'
 import { useMobileStore } from '../../store/useMobileStore'
 import { usePdfStore, type TextObject } from '../../store/usePdfStore'
 import Button from '../ui/Button'
+import FontSizeInput from '../ui/FontSizeInput'
 
 export default function TextEditSheet() {
   const editingTextId = useMobileStore((state) => state.editingTextId)
@@ -11,8 +13,10 @@ export default function TextEditSheet() {
   const cancelTextEditor = useMobileStore((state) => state.cancelTextEditor)
 
   const objects = usePdfStore((state) => state.objects)
+  const pageTextRuns = usePdfStore((state) => state.pageTextRuns)
   const updateObject = usePdfStore((state) => state.updateObject)
   const beginHistory = usePdfStore((state) => state.beginHistory)
+  const mergeLineForSelected = usePdfStore((state) => state.mergeLineForSelected)
   const textWarning = usePdfStore((state) => state.textWarning)
 
   const [bottomOffset, setBottomOffset] = useState(0)
@@ -21,6 +25,9 @@ export default function TextEditSheet() {
   const textObject = objects.find(
     (obj): obj is TextObject => obj.id === editingTextId && obj.type === 'text',
   )
+  const canMergeLine = textObject
+    ? getSameLineCandidates(textObject, objects, pageTextRuns[textObject.page] ?? []).length >= 2
+    : false
 
   useEffect(() => {
     const vv = window.visualViewport
@@ -149,19 +156,9 @@ export default function TextEditSheet() {
           <Italic size={16} strokeWidth={2} />
         </button>
 
-        <input
-          type="number"
-          min={6}
-          max={96}
-          step={1}
-          value={Math.round(textObject.fontSize)}
-          onChange={(e) => {
-            const val = Number.parseFloat(e.target.value)
-            if (!Number.isNaN(val) && val >= 4 && val <= 120) {
-              applyEdit({ fontSize: val })
-            }
-          }}
-          aria-label="Font size"
+        <FontSizeInput
+          value={textObject.fontSize}
+          onChange={(fontSize) => applyEdit({ fontSize })}
           className="h-9 w-16 shrink-0 rounded-lg border border-slate-300 bg-white px-2 text-[16px] text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
         />
 
@@ -172,6 +169,23 @@ export default function TextEditSheet() {
           aria-label="Text color"
           className="h-9 w-9 shrink-0 cursor-pointer rounded-lg border border-slate-300 bg-white p-1"
         />
+
+        {canMergeLine && (
+          <button
+            type="button"
+            onClick={() => {
+              const targetId = textObject.id
+              commitTextEditor()
+              mergeLineForSelected(targetId)
+              useMobileStore.getState().openTextEditor(targetId, false)
+            }}
+            aria-label="Merge Line"
+            className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-700"
+          >
+            <Merge size={14} strokeWidth={2} />
+            <span>Merge Line</span>
+          </button>
+        )}
       </div>
 
       <div className="mt-2 flex items-center justify-end gap-2">

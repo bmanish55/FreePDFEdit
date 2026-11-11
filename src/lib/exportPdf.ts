@@ -1,10 +1,10 @@
 import fontkit from '@pdf-lib/fontkit'
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from 'pdf-lib'
 import { topLeftToPdfY } from './coords'
-import { loadFont, type LoadedFont } from './fonts/fontLoader'
+import { LATIN_FONT_FEATURES, loadFont, type LoadedFont } from './fonts/fontLoader'
 import { hasDevanagari } from './fonts/fontMatcher'
 import { layoutText } from './text/layoutText'
-import type { EditObject } from '../store/usePdfStore'
+import { sortObjectsByLayer, type EditObject } from '../store/usePdfStore'
 
 function hexToRgb(hex: string) {
   const value = hex.replace('#', '')
@@ -23,38 +23,18 @@ export async function exportPdf(
   pdf.registerFontkit(fontkit)
 
   const embeddedFonts = new Map<string, PDFFont>()
+  const orderedObjects = sortObjectsByLayer(objects)
 
-  for (const object of objects) {
-    const page = pdf.getPage(object.page - 1)
-    const { height } = page.getSize()
+  type PreparedText = {
+    object: Extract<EditObject, { type: 'text' }>
+    fontToUse: PDFFont
+    layout: ReturnType<typeof layoutText>
+  }
+  const preparedTexts: PreparedText[] = []
 
-    if (object.type === 'image') {
-      const image =
-        object.mime === 'image/png'
-          ? await pdf.embedPng(object.dataUrl)
-          : await pdf.embedJpg(object.dataUrl)
-      page.drawImage(image, {
-        x: object.x,
-        y: topLeftToPdfY(height, object.y, object.height),
-        width: object.width,
-        height: object.height,
-      })
-      continue
-    }
-
-    if (object.type === 'whiteout' || object.type === 'highlight') {
-      page.drawRectangle({
-        x: object.x,
-        y: topLeftToPdfY(height, object.y, object.height),
-        width: object.width,
-        height: object.height,
-        color: object.type === 'whiteout' ? rgb(1, 1, 1) : rgb(1, 1, 0),
-        opacity: object.type === 'highlight' ? 0.4 : 1,
-      })
-      continue
-    }
-
+  for (const object of orderedObjects) {
     if (object.type !== 'text') continue
+    if (object.original === null && object.text === '') continue
 
     try {
       let loadedFont: LoadedFont | null = null
@@ -71,7 +51,15 @@ export async function exportPdf(
         })
 
         if (!embeddedFonts.has(loadedFont.key)) {
-          const embedded = await pdf.embedFont(loadedFont.bytes, { subset: true })
+          // Embed full font without subsetting because @pdf-lib/fontkit TTFSubset corrupts Carlito glyphs;
+          // disable Latin ligatures so pdf-lib's /W widths and /ToUnicode stay aligned for every glyph.
+          const features = loadedFont.key.startsWith('devanagari')
+            ? undefined
+            : { ...LATIN_FONT_FEATURES }
+          const embedded = await pdf.embedFont(new Uint8Array(loadedFont.bytes), {
+            subset: false,
+            features,
+          })
           embeddedFonts.set(loadedFont.key, embedded)
         }
         fontToUse = embeddedFonts.get(loadedFont.key)!
@@ -122,22 +110,94 @@ export async function exportPdf(
         measure: (text: string, fontSize: number) => fontToUse.widthOfTextAtSize(text, fontSize),
       }
 
-      const layout = layoutText(object, effectiveFont)
+      preparedTexts.push({
+        object,
+        fontToUse,
+        layout: layoutText(object, effectiveFont),
+      })
+    } catch (textErr) {
+      console.error('Error preparing text in exportPdf:', textErr)
+      throw new Error(
+        'Some characters could not be encoded. Please remove unsupported symbols.',
+      )
+    }
+  }
 
-      if (layout.cover) {
-        page.drawRectangle({
-          x: layout.cover.x,
-          y: topLeftToPdfY(height, layout.cover.y, layout.cover.height),
-          width: layout.cover.width,
-          height: layout.cover.height,
-          color: hexToRgb(layout.cover.color),
-        })
-      }
+  for (const object of orderedObjects) {
+    if (object.type !== 'whiteout') continue
+    const page = pdf.getPage(object.page - 1)
+    const { height } = page.getSize()
+    page.drawRectangle({
+      x: object.x,
+      y: topLeftToPdfY(height, object.y, object.height),
+      width: object.width,
+      height: object.height,
+      color: rgb(1, 1, 1),
+      opacity: 1,
+    })
+  }
 
-      if (object.text) {
-        const textY = height - layout.baselineY
-        if (layout.wordSpacing && layout.wordSpacing > 0.01 && object.text.includes(' ')) {
-          const parts = object.text.split(' ')
+  for (const { object, layout } of preparedTexts) {
+    if (layout.covers.length === 0) continue
+    const page = pdf.getPage(object.page - 1)
+    const { height } = page.getSize()
+    for (const cover of layout.covers) {
+      page.drawRectangle({
+        x: cover.x,
+        y: topLeftToPdfY(height, cover.y, cover.height),
+        width: cover.width,
+        height: cover.height,
+        color: hexToRgb(cover.color),
+      })
+    }
+  }
+
+  for (const object of orderedObjects) {
+    if (object.type !== 'highlight' && object.type !== 'image') continue
+    const page = pdf.getPage(object.page - 1)
+    const { height } = page.getSize()
+
+    if (object.type === 'highlight') {
+      page.drawRectangle({
+        x: object.x,
+        y: topLeftToPdfY(height, object.y, object.height),
+        width: object.width,
+        height: object.height,
+        color: rgb(1, 1, 0),
+        opacity: 0.4,
+      })
+    } else if (object.type === 'image') {
+      const image =
+        object.mime === 'image/png'
+          ? await pdf.embedPng(object.dataUrl)
+          : await pdf.embedJpg(object.dataUrl)
+      page.drawImage(image, {
+        x: object.x,
+        y: topLeftToPdfY(height, object.y, object.height),
+        width: object.width,
+        height: object.height,
+      })
+    }
+  }
+
+  for (const { object, fontToUse, layout } of preparedTexts) {
+    if (!object.text) continue
+    try {
+      const page = pdf.getPage(object.page - 1)
+      const { height } = page.getSize()
+      const lines = layout.lines
+      for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+        const lineText = lines[lineIdx]
+        if (!lineText) continue
+        const textY = height - (layout.baselineY + lineIdx * layout.lineHeight)
+        if (
+          lineIdx === 0 &&
+          lines.length === 1 &&
+          layout.wordSpacing &&
+          layout.wordSpacing > 0.01 &&
+          lineText.includes(' ')
+        ) {
+          const parts = lineText.split(' ')
           let currentX = layout.textX
           const spaceWidth = fontToUse.widthOfTextAtSize(' ', layout.fontSize) + layout.wordSpacing
           for (let i = 0; i < parts.length; i++) {
@@ -157,7 +217,7 @@ export async function exportPdf(
             }
           }
         } else {
-          page.drawText(object.text, {
+          page.drawText(lineText, {
             x: layout.textX,
             y: textY,
             size: layout.fontSize,

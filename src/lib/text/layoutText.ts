@@ -14,24 +14,150 @@ export type Layout = {
   textX: number
   baselineY: number
   width: number
+  lines: string[]
+  lineHeight: number
   cover: null | CoverRect
+  covers: CoverRect[]
   fit: 'ok' | 'shrunk' | 'overflow'
   warning: string | null
   wordSpacing?: number
 }
 
+function buildCoverRects(
+  obj: TextObject,
+  font: LoadedFont,
+  effectiveTextWidth: number,
+  hasMoved: boolean,
+): CoverRect[] {
+  const original = obj.original
+  if (!original) return []
+  const pad = 1.5
+
+  if (original.spans && original.spans.length > 0) {
+    return original.spans.map((span) => ({
+      x: span.x - pad,
+      y: span.baselineY - font.ascent * span.fontSize - pad,
+      width: span.width + pad * 2,
+      height: (font.ascent + font.descent) * span.fontSize + pad * 2,
+      color: span.bgColor,
+    }))
+  }
+
+  const origBaselineY = original.baselineY ?? obj.baselineY
+  const left = (hasMoved ? original.x : Math.min(obj.x, original.x)) - pad
+  const right =
+    (hasMoved
+      ? original.x + original.width
+      : Math.max(obj.x + effectiveTextWidth, original.x + original.width)) + pad
+  const top = origBaselineY - font.ascent * original.fontSize - pad
+  const bottom = origBaselineY + font.descent * original.fontSize + pad
+
+  return [
+    {
+      x: left,
+      y: top,
+      width: right - left,
+      height: bottom - top,
+      color: original.bgColor,
+    },
+  ]
+}
+
+export function wrapTextLines(
+  text: string,
+  maxWidth: number,
+  measure: (segment: string) => number,
+): string[] {
+  if (!text) return ['']
+  const paragraphs = text.split('\n')
+  const result: string[] = []
+
+  for (const para of paragraphs) {
+    if (para === '') {
+      result.push('')
+      continue
+    }
+    const tokens = para.split(/( +)/)
+    let current = ''
+
+    for (const token of tokens) {
+      if (token === '') continue
+      const candidate = current + token
+      if (current === '' || measure(candidate) <= maxWidth) {
+        current = candidate
+        continue
+      }
+      if (/^ +$/.test(token)) {
+        result.push(current)
+        current = ''
+        continue
+      }
+      result.push(current.replace(/ +$/, ''))
+      if (measure(token) > maxWidth) {
+        let chunk = ''
+        for (const ch of token) {
+          if (chunk && measure(chunk + ch) > maxWidth) {
+            result.push(chunk)
+            chunk = ch
+          } else {
+            chunk += ch
+          }
+        }
+        current = chunk
+      } else {
+        current = token
+      }
+    }
+    result.push(current)
+  }
+
+  return result
+}
+
 export function layoutText(obj: TextObject, font: LoadedFont): Layout {
   let size = obj.fontSize
-  let w = font.measure(obj.text, size)
+  const hasCustomBox = typeof obj.boxWidth === 'number' && obj.boxWidth > 0
+
+  if (hasCustomBox) {
+    const lineHeight = Math.max((font.ascent + font.descent) * size, size * 1.22)
+    const lines = wrapTextLines(obj.text, obj.boxWidth!, (seg) => font.measure(seg, size))
+    const maxLineW = lines.reduce((max, line) => Math.max(max, font.measure(line, size)), 0)
+    const origBaselineY = obj.original?.baselineY ?? obj.baselineY
+    const hasMoved = obj.original
+      ? Math.abs(obj.x - obj.original.x) > 1.5 || Math.abs(obj.baselineY - origBaselineY) > 1.5
+      : false
+    const covers = buildCoverRects(obj, font, maxLineW, hasMoved)
+
+    return {
+      fontSize: size,
+      textX: obj.x,
+      baselineY: obj.baselineY,
+      width: Math.max(maxLineW, obj.boxWidth!),
+      lines,
+      lineHeight,
+      cover: covers[0] ?? null,
+      covers,
+      fit: 'ok',
+      warning: null,
+      wordSpacing: 0,
+    }
+  }
+
+  const rawLines = obj.text ? obj.text.split('\n') : ['']
+  let w = rawLines.reduce((max, line) => Math.max(max, font.measure(line, size)), 0)
 
   // If obj.original is null (new text): no cover, fit = 'ok'
   if (!obj.original) {
+    const lineHeight = Math.max((font.ascent + font.descent) * size, size * 1.22)
     return {
       fontSize: size,
       textX: obj.x,
       baselineY: obj.baselineY,
       width: w,
+      lines: rawLines,
+      lineHeight,
       cover: null,
+      covers: [],
       fit: 'ok',
       warning: null,
       wordSpacing: 0,
@@ -39,6 +165,11 @@ export function layoutText(obj: TextObject, font: LoadedFont): Layout {
   }
 
   const original = obj.original
+  const origBaselineY = original.baselineY ?? obj.baselineY
+  const hasMoved =
+    Math.abs(obj.x - original.x) > 1.5 || Math.abs(obj.baselineY - origBaselineY) > 1.5
+  const hasCustomSize = Math.abs(obj.fontSize - original.fontSize) > 0.1
+  const isMerged = Boolean(original.merged)
   const available = original.maxRight - obj.x
   let fit: 'ok' | 'shrunk' | 'overflow' = 'ok'
   let warning: string | null = null
@@ -47,20 +178,25 @@ export function layoutText(obj: TextObject, font: LoadedFont): Layout {
   const isExactOriginal = obj.text === original.text
   const spaceCount = (obj.text.match(/\s/g) || []).length
 
-  if (isExactOriginal) {
-    // Exact original line must NEVER shrink and has no warnings
+  if (isExactOriginal && !hasCustomSize) {
     fit = 'ok'
     warning = null
     size = original.fontSize
     w = font.measure(obj.text, size)
-    // Match justified word spacing from original line
-    if (original.width > w && spaceCount > 0) {
+    if (!isMerged && original.width > w && spaceCount > 0) {
       wordSpacing = Math.min(Math.max(0, (original.width - w) / spaceCount), size * 0.8)
     }
-  } else if (w <= available) {
+  } else if (hasMoved || hasCustomSize || rawLines.length > 1 || w <= available) {
     fit = 'ok'
-    // Slightly edited text: maintain natural word spacing if line was justified
-    if (original.width > w && spaceCount > 0 && Math.abs(original.width - w) < size * 3) {
+    if (
+      !isMerged &&
+      !hasMoved &&
+      !hasCustomSize &&
+      rawLines.length === 1 &&
+      original.width > w &&
+      spaceCount > 0 &&
+      Math.abs(original.width - w) < size * 3
+    ) {
       wordSpacing = Math.min(Math.max(0, (original.width - w) / spaceCount), size * 0.5)
     }
   } else {
@@ -80,28 +216,19 @@ export function layoutText(obj: TextObject, font: LoadedFont): Layout {
     }
   }
 
-  // Cover rectangle (hides original text) with pad = 1.5
-  const pad = 1.5
-  const left = Math.min(obj.x, original.x) - pad
+  const lineHeight = Math.max((font.ascent + font.descent) * size, size * 1.22)
   const effectiveTextWidth = w + wordSpacing * spaceCount
-  const right = Math.max(obj.x + effectiveTextWidth, original.x + original.width) + pad
-  const top = obj.baselineY - font.ascent * original.fontSize - pad
-  const bottom = obj.baselineY + font.descent * original.fontSize + pad
-
-  const cover: CoverRect = {
-    x: left,
-    y: top,
-    width: right - left,
-    height: bottom - top,
-    color: original.bgColor,
-  }
+  const covers = buildCoverRects(obj, font, effectiveTextWidth, hasMoved)
 
   return {
     fontSize: size,
     textX: obj.x,
     baselineY: obj.baselineY,
     width: w,
-    cover,
+    lines: rawLines,
+    lineHeight,
+    cover: covers[0] ?? null,
+    covers,
     fit,
     warning,
     wordSpacing,
@@ -122,10 +249,10 @@ export function debugLayoutText(): void {
   const baseOriginal = {
     text: 'ABC',
     x: 100,
-    width: 3 * 12 * 0.6, // 21.6
+    width: 3 * 12 * 0.6,
     fontSize: 12,
     bgColor: '#FFFFFF',
-    maxRight: 150, // available = 50
+    maxRight: 150,
   }
 
   const shortObj: TextObject = {
@@ -146,7 +273,7 @@ export function debugLayoutText(): void {
   const shrunkObj: TextObject = {
     ...shortObj,
     id: 'test-shrunk',
-    text: 'ABCABCABC', // 9 chars -> 64.8 pt at 12pt, needed = 9.26 >= 9 -> shrunk
+    text: 'ABCABCABC',
   }
 
   const overflowObj: TextObject = {
@@ -155,7 +282,7 @@ export function debugLayoutText(): void {
     text: 'ABCABCABC',
     original: {
       ...baseOriginal,
-      maxRight: 135, // available = 35 -> needed = 6.48 < 9 -> overflow
+      maxRight: 135,
     },
   }
 

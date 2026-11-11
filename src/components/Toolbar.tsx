@@ -5,7 +5,9 @@ import {
   Highlighter,
   ImagePlus,
   Italic,
+  Merge,
   MousePointer2,
+  MousePointerClick,
   Trash2,
   Type,
   Undo2,
@@ -14,9 +16,11 @@ import {
   Sparkles,
 } from 'lucide-react'
 import type { FontFamilyKey } from '../lib/fonts/fontMatcher'
+import { getSameLineCandidates } from '../lib/text/mergeText'
 import { usePdfStore, type TextObject } from '../store/usePdfStore'
 import ToolButton from './ui/ToolButton'
 import Button from './ui/Button'
+import FontSizeInput from './ui/FontSizeInput'
 import AiOptimizeModal from './AiOptimizeModal'
 
 export default function Toolbar() {
@@ -33,12 +37,27 @@ export default function Toolbar() {
   const selectedId = usePdfStore((state) => state.selectedId)
   const objects = usePdfStore((state) => state.objects)
   const updateObject = usePdfStore((state) => state.updateObject)
+  const beginHistory = usePdfStore((state) => state.beginHistory)
+  const pageTextRuns = usePdfStore((state) => state.pageTextRuns)
+  const mergeSourceId = usePdfStore((state) => state.mergeSourceId)
+  const setMergeSourceId = usePdfStore((state) => state.setMergeSourceId)
+  const mergeLineForSelected = usePdfStore((state) => state.mergeLineForSelected)
   const isAiModalOpen = usePdfStore((state) => state.isAiModalOpen)
   const setAiModalOpen = usePdfStore((state) => state.setAiModalOpen)
 
   const selectedTextObject = objects.find(
     (obj): obj is TextObject => obj.id === selectedId && obj.type === 'text',
   )
+  const sameLineCount = selectedTextObject
+    ? getSameLineCandidates(
+        selectedTextObject,
+        objects,
+        pageTextRuns[selectedTextObject.page] ?? [],
+      ).length
+    : 0
+  const canMergeLine = sameLineCount >= 2
+  const isMergePicking =
+    selectedTextObject !== undefined && mergeSourceId === selectedTextObject.id
 
   const handleImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -66,6 +85,7 @@ export default function Toolbar() {
       mime: file.type,
     })
     setVisiblePage(visiblePage)
+    setActiveTool('select')
   }
 
   return (
@@ -92,7 +112,7 @@ export default function Toolbar() {
           label="Add Image"
           active={activeTool === 'addImage'}
           onClick={() => {
-            setActiveTool('addImage')
+            setActiveTool('select')
             fileInputRef.current?.click()
           }}
           className="shrink-0"
@@ -210,20 +230,13 @@ export default function Toolbar() {
 
             <label className="flex items-center gap-1.5 text-sm text-slate-600">
               <span>Size:</span>
-              <input
-                type="number"
-                min={6}
-                max={96}
-                step={1}
-                value={Math.round(selectedTextObject.fontSize)}
-                onChange={(e) => {
-                  const val = Number.parseFloat(e.target.value)
-                  if (!Number.isNaN(val) && val >= 4 && val <= 120) {
-                    updateObject(selectedTextObject.id, { fontSize: val })
-                  }
-                }}
+              <FontSizeInput
+                value={selectedTextObject.fontSize}
+                onStartEdit={beginHistory}
+                onChange={(fontSize) =>
+                  updateObject(selectedTextObject.id, { fontSize }, false)
+                }
                 className="h-9 w-16 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-                aria-label="Font size"
               />
             </label>
 
@@ -243,6 +256,52 @@ export default function Toolbar() {
                 aria-label="Text color"
               />
             </label>
+
+            <div className="mx-1 h-6 w-px bg-slate-200" />
+
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={!canMergeLine}
+              onClick={() => mergeLineForSelected(selectedTextObject.id)}
+              title={
+                canMergeLine
+                  ? 'Merge all split blocks on this horizontal line into one sentence'
+                  : 'No other text blocks on this line to merge'
+              }
+              className="inline-flex items-center gap-1.5 text-xs font-medium"
+            >
+              <Merge size={14} />
+              <span>Merge Line</span>
+            </Button>
+
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={!canMergeLine}
+              onClick={() =>
+                setMergeSourceId(isMergePicking ? null : selectedTextObject.id)
+              }
+              title={
+                canMergeLine
+                  ? 'Click another text block on this line to merge with it'
+                  : 'No other text blocks on this line to merge'
+              }
+              className={`inline-flex items-center gap-1.5 text-xs font-medium ${
+                isMergePicking
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                  : ''
+              }`}
+            >
+              <MousePointerClick size={14} />
+              <span>{isMergePicking ? 'Cancel Merge' : 'Merge With...'}</span>
+            </Button>
+
+            {isMergePicking && (
+              <span className="text-xs font-medium text-emerald-700">
+                Click another block on this line
+              </span>
+            )}
 
             <Button
               variant="secondary"

@@ -1,440 +1,41 @@
-import { useEffect, useRef, useState } from 'react'
-import type { ChangeEvent, KeyboardEvent, PointerEvent } from 'react'
+import { useRef } from 'react'
+import type { PointerEvent } from 'react'
 import { pdfToScreen } from '../lib/coords'
-import { loadFont, type LoadedFont } from '../lib/fonts/fontLoader'
-import { hasDevanagari } from '../lib/fonts/fontMatcher'
-import { layoutText } from '../lib/text/layoutText'
-import { usePdfStore, type EditObject, type TextObject } from '../store/usePdfStore'
+import { buildSnapTargets, computeSnapGuides, type SnapTargetSet } from '../lib/snapGuides'
+import { usePdfStore, type EditObject } from '../store/usePdfStore'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useMobileStore } from '../store/useMobileStore'
 import MobileObjectBox from './mobile/MobileObjectBox'
+import TextObjectView from './TextObjectView'
 
 type ObjectViewProps = {
   object: EditObject
   zoom: number
 }
 
-function TextView({ object, zoom }: { object: TextObject; zoom: number }) {
-  const selectedId = usePdfStore((state) => state.selectedId)
-  const selectObject = usePdfStore((state) => state.selectObject)
-  const updateObject = usePdfStore((state) => state.updateObject)
-  const beginHistory = usePdfStore((state) => state.beginHistory)
-  const setTextWarning = usePdfStore((state) => state.setTextWarning)
-  const selected = selectedId === object.id
-  const isMobile = useIsMobile()
-  const mobileMode = useMobileStore((state) => state.mode)
-  const openTextEditor = useMobileStore((state) => state.openTextEditor)
-  const commitTextEditor = useMobileStore((state) => state.commitTextEditor)
-
-  const [font, setFont] = useState<LoadedFont | null>(null)
-  const [editing, setEditing] = useState(() => selectedId === object.id)
-
-  const inputRef = useRef<HTMLInputElement>(null)
-  const dragStart = useRef({ x: 0, y: 0 })
-  const objectStart = useRef({ x: 0, y: 0 })
-  const initialText = useRef(object.text)
-  const hasMoved = useRef(false)
-  const mobileHistoryStarted = useRef(false)
-
-  const isDevanagari = hasDevanagari(object.text) || object.fontFamily === 'devanagari'
-  const activeFamily = isDevanagari ? 'devanagari' : object.fontFamily
-
-  useEffect(() => {
-    let cancelled = false
-    loadFont({ family: activeFamily, bold: object.bold, italic: object.italic })
-      .then((loaded) => {
-        if (!cancelled) setFont(loaded)
-      })
-      .catch((err) => {
-        console.warn('Could not load font, using fallback:', err)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [activeFamily, object.bold, object.italic])
-
-  const effectiveFont: LoadedFont = font || {
-    key: `${activeFamily}-${object.bold ? 'bold' : 'regular'}`,
-    bytes: new ArrayBuffer(0),
-    cssFamily:
-      activeFamily === 'devanagari'
-        ? "'Noto Sans Devanagari', sans-serif"
-        : activeFamily === 'cousine'
-          ? 'monospace'
-          : activeFamily === 'tinos'
-            ? "'Tinos', 'Times New Roman', Times, serif"
-            : 'sans-serif',
-    unitsPerEm: 1000,
-    ascent: 0.95,
-    descent: 0.25,
-    measure: (text: string, fontSize: number) => {
-      if (typeof document !== 'undefined') {
-        const canvas = document.createElement('canvas')
-        const ctx = canvas.getContext('2d')
-        if (ctx) {
-          const fontStyle = object.italic ? 'italic ' : ''
-          const fontWeight = object.bold ? 'bold ' : ''
-          const family = activeFamily === 'tinos' ? '"Times New Roman", Times, serif' : 'sans-serif'
-          ctx.font = `${fontStyle}${fontWeight}${fontSize}px ${family}`
-          return ctx.measureText(text).width
-        }
-      }
-      return text.length * fontSize * (activeFamily === 'tinos' ? 0.44 : 0.52)
-    },
-  }
-
-  const layout = layoutText(object, effectiveFont)
-
-  useEffect(() => {
-    if (selected) {
-      setTextWarning(layout.warning)
-    }
-  }, [selected, layout.warning, setTextWarning])
-
-  useEffect(() => {
-    if (isMobile) return
-    if (editing && inputRef.current) {
-      inputRef.current.focus({ preventScroll: true })
-    }
-  }, [editing, isMobile])
-
-  const isOriginalPdfText = object.original !== null
-
-  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    event.stopPropagation()
-    selectObject(object.id)
-    // Anchored PDF text lines are locked in place to avoid misplacing over whiteout covers
-    if (isOriginalPdfText) {
-      if (!editing) {
-        initialText.current = object.text
-        setEditing(true)
-      }
-      return
-    }
-    if (editing) return
-    hasMoved.current = false
-    dragStart.current = { x: event.clientX, y: event.clientY }
-    objectStart.current = { x: object.x, y: object.baselineY }
-    beginHistory()
-    event.currentTarget.setPointerCapture(event.pointerId)
-  }
-
-  const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    if (isOriginalPdfText) return
-    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
-    const screenDx = event.clientX - dragStart.current.x
-    const screenDy = event.clientY - dragStart.current.y
-    const threshold = event.pointerType === 'touch' ? 16 : 3
-    if (Math.hypot(screenDx, screenDy) < threshold && !hasMoved.current) {
-      return
-    }
-    hasMoved.current = true
-    const dx = screenDx / zoom
-    const dy = screenDy / zoom
-    updateObject(
-      object.id,
-      {
-        x: objectStart.current.x + dx,
-        baselineY: objectStart.current.y + dy,
-      },
-      false,
-    )
-  }
-
-  const handlePointerUp = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
-    if (!hasMoved.current && !editing) {
-      initialText.current = object.text
-      setEditing(true)
-    }
-  }
-
-  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
-    updateObject(object.id, { text: event.target.value })
-  }
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Enter') {
-      event.preventDefault()
-      setEditing(false)
-    } else if (event.key === 'Escape') {
-      event.preventDefault()
-      updateObject(object.id, { text: initialText.current })
-      setEditing(false)
-    }
-  }
-
-  const handleBlur = () => {
-    setEditing(false)
-    initialText.current = object.text
-  }
-
-  const elementHeight = (effectiveFont.ascent + effectiveFont.descent) * layout.fontSize * zoom
-  const elementTop = (layout.baselineY - effectiveFont.ascent * layout.fontSize) * zoom
-  const elementLeft = layout.textX * zoom
-  const spaceCount = (object.text.match(/\s/g) || []).length
-  const totalTextWidth = layout.width + (layout.wordSpacing || 0) * spaceCount
-  const inputWidth = Math.max(totalTextWidth * zoom + 16, 32)
-
-  const fontCss =
-    activeFamily === 'devanagari'
-      ? `${effectiveFont.cssFamily}, 'Noto Sans Devanagari', sans-serif`
-      : effectiveFont.cssFamily
-
-  if (isMobile) {
-    const isViewMode = mobileMode === 'view'
-    const canDragOnMobile = !isViewMode && selected && !isOriginalPdfText
-
-    const endMobileDrag = (target: HTMLDivElement, pointerId: number) => {
-      if (target.hasPointerCapture(pointerId)) {
-        target.releasePointerCapture(pointerId)
-      }
-      mobileHistoryStarted.current = false
-    }
-
-    return (
-      <>
-        {layout.cover && (
-          <div
-            className="pointer-events-none absolute"
-            style={{
-              left: layout.cover.x * zoom,
-              top: layout.cover.y * zoom,
-              width: layout.cover.width * zoom,
-              height: layout.cover.height * zoom,
-              backgroundColor: layout.cover.color,
-            }}
-          />
-        )}
-        <div
-          data-mobile-text-id={object.id}
-          className={`absolute ${isViewMode ? 'pointer-events-none' : ''} ${
-            !isViewMode && selected ? 'ring-2 ring-brand-500' : ''
-          } ${!isViewMode && layout.fit !== 'ok' ? 'outline-2 outline-dashed outline-orange-500' : ''}`}
-          style={{
-            left: elementLeft,
-            top: elementTop,
-            height: `${elementHeight}px`,
-            touchAction: canDragOnMobile ? 'none' : 'pan-x pan-y pinch-zoom',
-          }}
-          onPointerDown={
-            canDragOnMobile
-              ? (event) => {
-                  event.stopPropagation()
-                  hasMoved.current = false
-                  mobileHistoryStarted.current = false
-                  dragStart.current = { x: event.clientX, y: event.clientY }
-                  objectStart.current = { x: object.x, y: object.baselineY }
-                  event.currentTarget.setPointerCapture(event.pointerId)
-                }
-              : undefined
-          }
-          onPointerMove={
-            canDragOnMobile
-              ? (event) => {
-                  if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
-                  const screenDx = event.clientX - dragStart.current.x
-                  const screenDy = event.clientY - dragStart.current.y
-                  if (!hasMoved.current && Math.hypot(screenDx, screenDy) < 8) return
-                  if (!mobileHistoryStarted.current) {
-                    beginHistory()
-                    mobileHistoryStarted.current = true
-                  }
-                  hasMoved.current = true
-                  updateObject(
-                    object.id,
-                    {
-                      x: objectStart.current.x + screenDx / zoom,
-                      baselineY: objectStart.current.y + screenDy / zoom,
-                    },
-                    false,
-                  )
-                }
-              : undefined
-          }
-          onPointerUp={
-            canDragOnMobile
-              ? (event) => endMobileDrag(event.currentTarget, event.pointerId)
-              : undefined
-          }
-          onPointerCancel={
-            canDragOnMobile
-              ? (event) => endMobileDrag(event.currentTarget, event.pointerId)
-              : undefined
-          }
-          onLostPointerCapture={
-            canDragOnMobile
-              ? (event) => endMobileDrag(event.currentTarget, event.pointerId)
-              : undefined
-          }
-          onClick={
-            isViewMode
-              ? undefined
-              : (event) => {
-                  event.stopPropagation()
-                  if (hasMoved.current) {
-                    hasMoved.current = false
-                    return
-                  }
-                  const activeEditId = useMobileStore.getState().editingTextId
-                  if (activeEditId && activeEditId !== object.id) {
-                    commitTextEditor()
-                  }
-                  if (selected) {
-                    openTextEditor(object.id, false)
-                  } else {
-                    selectObject(object.id)
-                  }
-                }
-          }
-        >
-          <span
-            className="block p-0 m-0 outline-none"
-            style={{
-              fontFamily: fontCss,
-              fontSize: `${layout.fontSize * zoom}px`,
-              color: object.color,
-              fontWeight: object.bold ? 'bold' : 'normal',
-              fontStyle: object.italic ? 'italic' : 'normal',
-              wordSpacing: layout.wordSpacing ? `${layout.wordSpacing * zoom}px` : undefined,
-              whiteSpace: 'pre',
-              overflow: 'visible',
-              height: `${elementHeight}px`,
-              lineHeight: `${elementHeight}px`,
-            }}
-          >
-            {object.text || '\u00A0'}
-          </span>
-        </div>
-      </>
-    )
-  }
-
-  return (
-    <>
-      {layout.cover && (
-        <div
-          className="pointer-events-none absolute"
-          style={{
-            left: layout.cover.x * zoom,
-            top: layout.cover.y * zoom,
-            width: layout.cover.width * zoom,
-            height: layout.cover.height * zoom,
-            backgroundColor: layout.cover.color,
-          }}
-        />
-      )}
-      <div
-        className={`absolute ${selected ? 'ring-2 ring-brand-500' : ''} ${
-          layout.fit !== 'ok' ? 'outline-2 outline-dashed outline-orange-500' : ''
-        }`}
-        style={{
-          left: elementLeft,
-          top: elementTop,
-          height: `${elementHeight}px`,
-        }}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-      >
-        {editing ? (
-          <input
-            ref={inputRef}
-            type="text"
-            value={object.text}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            onBlur={handleBlur}
-            onPointerDown={(event) => event.stopPropagation()}
-            className="block border-none bg-transparent p-0 m-0 outline-none"
-            style={{
-              fontFamily: fontCss,
-              fontSize: `${layout.fontSize * zoom}px`,
-              color: object.color,
-              fontWeight: object.bold ? 'bold' : 'normal',
-              fontStyle: object.italic ? 'italic' : 'normal',
-              wordSpacing: layout.wordSpacing ? `${layout.wordSpacing * zoom}px` : undefined,
-              height: `${elementHeight}px`,
-              lineHeight: `${elementHeight}px`,
-              width: `${inputWidth}px`,
-            }}
-          />
-        ) : (
-          <span
-            className="block cursor-text p-0 m-0 outline-none"
-            style={{
-              fontFamily: fontCss,
-              fontSize: `${layout.fontSize * zoom}px`,
-              color: object.color,
-              fontWeight: object.bold ? 'bold' : 'normal',
-              fontStyle: object.italic ? 'italic' : 'normal',
-              wordSpacing: layout.wordSpacing ? `${layout.wordSpacing * zoom}px` : undefined,
-              whiteSpace: 'pre',
-              overflow: 'visible',
-              height: `${elementHeight}px`,
-              lineHeight: `${elementHeight}px`,
-            }}
-          >
-            {object.text || '\u00A0'}
-          </span>
-        )}
-      </div>
-    </>
-  )
-}
-
 export default function ObjectView({ object, zoom }: ObjectViewProps) {
   const selectedId = usePdfStore((state) => state.selectedId)
+  const activeTool = usePdfStore((state) => state.activeTool)
   const selectObject = usePdfStore((state) => state.selectObject)
   const updateObject = usePdfStore((state) => state.updateObject)
   const beginHistory = usePdfStore((state) => state.beginHistory)
+  const setActiveGuides = usePdfStore((state) => state.setActiveGuides)
 
   const dragStart = useRef({ x: 0, y: 0 })
   const objectStart = useRef({ x: 0, y: 0 })
-  const resizeStart = useRef({ x: 0, width: 0, height: 0 })
+  const resizeStart = useRef({ x: 0, y: 0, width: 0, height: 0 })
+  const snapTargetsRef = useRef<SnapTargetSet | null>(null)
+  const hasMovedShape = useRef(false)
+  const dragHistoryStarted = useRef(false)
+  const resizeHistoryStarted = useRef(false)
+
   const selected = selectedId === object.id
+  const isSelectTool = activeTool === 'select'
   const isMobile = useIsMobile()
   const mobileMode = useMobileStore((state) => state.mode)
 
   if (object.type === 'text') {
-    return <TextView object={object} zoom={zoom} />
-  }
-
-  const position = pdfToScreen(object, zoom)
-
-  const hasMovedShape = useRef(false)
-
-  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    event.stopPropagation()
-    selectObject(object.id)
-    hasMovedShape.current = false
-    dragStart.current = { x: event.clientX, y: event.clientY }
-    objectStart.current = { x: object.x, y: object.y }
-    beginHistory()
-    event.currentTarget.setPointerCapture(event.pointerId)
-  }
-
-  const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
-    const screenDx = event.clientX - dragStart.current.x
-    const screenDy = event.clientY - dragStart.current.y
-    const threshold = event.pointerType === 'touch' ? 16 : 3
-    if (Math.hypot(screenDx, screenDy) < threshold && !hasMovedShape.current) {
-      return
-    }
-    hasMovedShape.current = true
-    const dx = screenDx / zoom
-    const dy = screenDy / zoom
-    updateObject(
-      object.id,
-      {
-        x: objectStart.current.x + dx,
-        y: objectStart.current.y + dy,
-      },
-      false,
-    )
+    return <TextObjectView object={object} zoom={zoom} />
   }
 
   if (isMobile) {
@@ -448,17 +49,173 @@ export default function ObjectView({ object, zoom }: ObjectViewProps) {
     )
   }
 
+  const position = pdfToScreen(object, zoom)
+
+  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (!isSelectTool) return
+    event.stopPropagation()
+    selectObject(object.id)
+    hasMovedShape.current = false
+    dragHistoryStarted.current = false
+    dragStart.current = { x: event.clientX, y: event.clientY }
+    objectStart.current = { x: object.x, y: object.y }
+    const state = usePdfStore.getState()
+    snapTargetsRef.current = buildSnapTargets(
+      object.page,
+      object.id,
+      state.objects,
+      state.pageTextRuns[object.page] ?? [],
+      state.pageSizes[object.page],
+    )
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+    const screenDx = event.clientX - dragStart.current.x
+    const screenDy = event.clientY - dragStart.current.y
+    const threshold = event.pointerType === 'touch' ? 16 : 3
+    if (Math.hypot(screenDx, screenDy) < threshold && !hasMovedShape.current) {
+      return
+    }
+    if (!dragHistoryStarted.current) {
+      beginHistory()
+      dragHistoryStarted.current = true
+    }
+    hasMovedShape.current = true
+    const rawX = objectStart.current.x + screenDx / zoom
+    const rawY = objectStart.current.y + screenDy / zoom
+
+    if (snapTargetsRef.current) {
+      const snap = computeSnapGuides(
+        {
+          left: rawX,
+          centerX: rawX + object.width / 2,
+          right: rawX + object.width,
+          top: rawY,
+          centerY: rawY + object.height / 2,
+          bottom: rawY + object.height,
+        },
+        snapTargetsRef.current,
+        4 / zoom,
+        event.altKey,
+      )
+      setActiveGuides(snap.guides)
+      updateObject(
+        object.id,
+        {
+          x: rawX + snap.dx,
+          y: rawY + snap.dy,
+        },
+        false,
+      )
+      return
+    }
+
+    updateObject(
+      object.id,
+      {
+        x: rawX,
+        y: rawY,
+      },
+      false,
+    )
+  }
+
+  const endDrag = (target: HTMLDivElement, pointerId: number) => {
+    if (target.hasPointerCapture(pointerId)) {
+      target.releasePointerCapture(pointerId)
+    }
+    dragHistoryStarted.current = false
+    snapTargetsRef.current = null
+    setActiveGuides([])
+  }
+
+  const endResize = (target: HTMLDivElement, pointerId: number) => {
+    if (target.hasPointerCapture(pointerId)) {
+      target.releasePointerCapture(pointerId)
+    }
+    resizeHistoryStarted.current = false
+  }
+
+  const resizeHandle = selected && isSelectTool && (
+    <div
+      aria-label="Resize"
+      title="Drag to resize"
+      className="absolute -bottom-[5px] -right-[5px] h-3 w-3 cursor-se-resize rounded-sm bg-brand-600 ring-1 ring-white"
+      onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => {
+        event.stopPropagation()
+        selectObject(object.id)
+        resizeHistoryStarted.current = false
+        resizeStart.current = {
+          x: event.clientX,
+          y: event.clientY,
+          width: object.width,
+          height: object.height,
+        }
+        event.currentTarget.setPointerCapture(event.pointerId)
+      }}
+      onPointerMove={(event) => {
+        if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+        const dxPdf = (event.clientX - resizeStart.current.x) / zoom
+        const dyPdf = (event.clientY - resizeStart.current.y) / zoom
+        if (!resizeHistoryStarted.current) {
+          beginHistory()
+          resizeHistoryStarted.current = true
+        }
+        if (object.type === 'image') {
+          const nextWidth = Math.max(20, resizeStart.current.width + dxPdf)
+          updateObject(
+            object.id,
+            {
+              width: nextWidth,
+              height: (resizeStart.current.height * nextWidth) / resizeStart.current.width,
+            },
+            false,
+          )
+          return
+        }
+        updateObject(
+          object.id,
+          {
+            width: Math.max(8, resizeStart.current.width + dxPdf),
+            height: Math.max(8, resizeStart.current.height + dyPdf),
+          },
+          false,
+        )
+      }}
+      onPointerUp={(event) => endResize(event.currentTarget, event.pointerId)}
+      onPointerCancel={(event) => endResize(event.currentTarget, event.pointerId)}
+      onLostPointerCapture={(event) => endResize(event.currentTarget, event.pointerId)}
+    />
+  )
+
   if (object.type === 'whiteout' || object.type === 'highlight') {
+    const hoverRing =
+      isSelectTool && !selected && object.type === 'whiteout'
+        ? 'hover:ring-1 hover:ring-slate-400'
+        : ''
+    const zClass = selected ? 'z-20' : object.type === 'whiteout' ? 'z-0' : 'z-[1]'
     return (
       <div
-        className={`absolute ${object.type === 'whiteout' ? 'bg-white' : 'bg-yellow-300/40'} ${
-          selected ? 'ring-2 ring-brand-500' : ''
-        }`}
-        style={{ left: position.x, top: position.y, width: object.width * zoom, height: object.height * zoom }}
+        className={`absolute ${zClass} ${!isSelectTool ? 'pointer-events-none' : ''} ${
+          object.type === 'whiteout' ? 'bg-white' : 'bg-yellow-300/40'
+        } ${selected ? 'cursor-move ring-2 ring-brand-500' : hoverRing}`}
+        style={{
+          left: position.x,
+          top: position.y,
+          width: object.width * zoom,
+          height: object.height * zoom,
+        }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
-        onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)}
-      />
+        onPointerUp={(event) => endDrag(event.currentTarget, event.pointerId)}
+        onPointerCancel={(event) => endDrag(event.currentTarget, event.pointerId)}
+        onLostPointerCapture={(event) => endDrag(event.currentTarget, event.pointerId)}
+      >
+        {resizeHandle}
+      </div>
     )
   }
 
@@ -466,42 +223,28 @@ export default function ObjectView({ object, zoom }: ObjectViewProps) {
 
   return (
     <div
-      className={`absolute ${selected ? 'ring-2 ring-brand-500' : ''}`}
-      style={{ left: position.x, top: position.y, width: object.width * zoom, height: object.height * zoom }}
+      className={`absolute ${selected ? 'z-20' : 'z-[2]'} ${!isSelectTool ? 'pointer-events-none' : ''} ${
+        selected ? 'cursor-move ring-2 ring-brand-500' : ''
+      }`}
+      style={{
+        left: position.x,
+        top: position.y,
+        width: object.width * zoom,
+        height: object.height * zoom,
+      }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
-      onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)}
+      onPointerUp={(event) => endDrag(event.currentTarget, event.pointerId)}
+      onPointerCancel={(event) => endDrag(event.currentTarget, event.pointerId)}
+      onLostPointerCapture={(event) => endDrag(event.currentTarget, event.pointerId)}
     >
-      <img src={object.dataUrl} alt="Added PDF" className="h-full w-full object-contain" draggable={false} />
-      {selected && (
-        <div
-          className="absolute bottom-[-5px] right-[-5px] h-3 w-3 cursor-se-resize rounded-sm bg-brand-600"
-          onPointerDown={(event) => {
-            event.stopPropagation()
-            selectObject(object.id)
-            resizeStart.current = {
-              x: event.clientX,
-              width: object.width,
-              height: object.height,
-            }
-            event.currentTarget.setPointerCapture(event.pointerId)
-            beginHistory()
-          }}
-          onPointerMove={(event) => {
-            if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
-            const nextWidth = Math.max(20, resizeStart.current.width + (event.clientX - resizeStart.current.x) / zoom)
-            updateObject(
-              object.id,
-              {
-                width: nextWidth,
-                height: (resizeStart.current.height * nextWidth) / resizeStart.current.width,
-              },
-              false,
-            )
-          }}
-          onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)}
-        />
-      )}
+      <img
+        src={object.dataUrl}
+        alt="Added PDF"
+        className="h-full w-full object-contain"
+        draggable={false}
+      />
+      {resizeHandle}
     </div>
   )
 }
