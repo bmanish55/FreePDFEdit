@@ -74,8 +74,8 @@ export default function BuyMeCoffeeModal({ onProceedDownload }: BuyMeCoffeeModal
     setIsDeclining(true)
     markCoffeePromptHandled()
     closeCoffeeModal()
-    setCoffeeBanner({ kind: 'declined' })
     if (coffeeSource === 'download') {
+      setCoffeeBanner({ kind: 'declined' })
       await onProceedDownload()
     }
     setIsDeclining(false)

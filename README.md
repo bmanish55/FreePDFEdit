@@ -29,13 +29,15 @@
 
 | Feature | Description |
 | :--- | :--- |
-| **✍️ Precision In-Place Text Editing** | Click any line to edit text in place. Matches original font weights, metrics, and justified word spacing (`Tw`). |
-| **✨ Open-Source AI Smart Fit** | Integrates with local **Ollama** (`llama3.2`, `qwen2.5`) or offline semantic rules to rewrite overflow text into the line budget without reducing font size. |
-| **🛡️ Complete Offline Privacy** | Powered entirely by WebAssembly and Canvas. Files stay on your machine at all times. |
-| **🖼️ Image Insertion & Resize** | Add PNG or JPEG stamps/signatures, drag to reposition, and resize with aspect-ratio preservation. |
-| **🖍️ Whiteout & Highlighter** | Redact sensitive information or highlight key document passages. |
-| **🔄 Full Undo History** | Safe editing with multi-step undo (`Ctrl+Z`) and element deletion. |
-| **⚡ Instant Export** | Generates standard-compliant PDFs directly in memory with embedded subsets. |
+| **✍️ Precision In-Place Text Editing** | Click any line to edit text in place with smart horizontal line merging, alignment snap guides, background color sampling, and metric-compatible font matching (`Arimo`, `Carlito`, `Tinos`, `Cousine`). |
+| **✨ Open-Source AI Smart Fit** | Integrates with local **Ollama** (`llama3.2`, `qwen2.5`) or offline semantic rules to rewrite overflow text into the line budget without shrinking font size. |
+| **🔷 Vector Shapes & Annotations** | Draw ellipses, rectangles, lines, arrows, polygons, clouds, and polylines with stroke/fill/opacity/dash controls, plus 14 annotation icons with attachable PDF popup notes. |
+| **🖼️ Image Insertion & Resize** | Add PNG or JPEG stamps/signatures, drag to reposition with alignment guides, and resize with aspect-ratio preservation. |
+| **🖍️ Whiteout & Highlighter** | Redact sensitive areas or highlight key document passages. |
+| **📱 Touch-Friendly Mobile Editor** | Dedicated View/Edit mode switcher, fit-to-width zoom, keyboard-aware bottom text sheet, and mobile canvas memory guards. |
+| **💾 Local Draft Auto-Save** | Automatically saves active PDFs and edits locally in IndexedDB with draft recovery and unsaved-changes refresh confirmation. |
+| **🛡️ Complete Offline Document Privacy** | Powered by WebAssembly and Canvas (`PDF.js` + `pdf-lib`). Your PDF files stay on your device at all times. |
+| **🔄 Full Undo History & Instant Export** | Multi-step undo (`Ctrl+Z`), element deletion, and in-memory PDF export with embedded font subsets. |
 
 ---
 
@@ -54,9 +56,9 @@ flowchart LR
     style D fill:#ecfdf5,stroke:#10b981,stroke-width:2px
 ```
 
-* **No backend server**: There is no Node/Python backend processing your files.
+* **Zero document uploads**: PDF parsing, rendering, editing, and exporting happen strictly inside your browser's memory.
 * **No telemetry / trackers**: No document tracking or analytics profiling.
-* **Fully functional offline**: You can disconnect your internet and edit documents without interruption.
+* **Works offline**: Disconnect your internet and edit/export documents without interruption. *(Optional serverless endpoints are used only when you explicitly submit feedback or trigger a Buy Me a Coffee UPI QR / thank-you email.)*
 
 ---
 
@@ -121,8 +123,53 @@ To enable local LLM paraphrasing for the AI Smart Fit assistant:
 * **PDF Parsing & Rendering**: [PDF.js (`pdfjs-dist`)](https://mozilla.github.io/pdf.js/)
 * **PDF Generation & Binary Assembly**: [pdf-lib](https://pdf-lib.js.org/) + [@pdf-lib/fontkit](https://github.com/Hopding/fontkit)
 * **Metric-Compatible Fonts**: Tinos (Times), Arimo (Arial), Carlito (Calibri), Cousine (Courier)
-* **State Management**: [Zustand](https://github.com/pmndrs/zustand)
+* **State & Local Persistence**: [Zustand](https://github.com/pmndrs/zustand) + browser `IndexedDB` draft storage
+* **Optional Serverless Routes**: Netlify Functions / Vercel API (`nodemailer`, `qrcode`) for OTP feedback & UPI Buy Me a Coffee emails
 * **Icons**: [Lucide React](https://lucide.dev/)
+
+---
+
+## 📚 Developer Guides
+
+Reference architecture guides for future updates live in [`Guide/`](Guide/):
+
+* [`Guide/TEXT_ENGINE_SPEC.md`](Guide/TEXT_ENGINE_SPEC.md) — Coordinate model, font metrics, color sampling, `layoutText` invariants, and future Devanagari/script support notes.
+* [`Guide/MOBILE_SPEC.md`](Guide/MOBILE_SPEC.md) — Desktop/mobile branching rules, touch-scroll safety, `visualViewport` keyboard positioning, and iOS canvas pixel caps.
+
+---
+
+## 📝 Changelog
+
+### 2026-11-12 — Support Flow Fix, Docs Cleanup & Netlify Config
+* **Buy Me a Coffee Banner Fix**: Restricted the `"Anyway, thanks for using this app! Your PDF download has started..."` declined banner strictly to the PDF download flow (`coffeeSource === 'download'`), so cancelling from the footer no longer claims a PDF download started.
+* **Netlify Secrets Scan Configuration**: Added `netlify.toml` with `SECRETS_SCAN_OMIT_KEYS` for public display names (`GMAIL_FROM_NAME`, `UPI_PAYEE_NAME`) while keeping private credentials (`GMAIL_USER`, `GMAIL_APP_PASSWORD`, `UPI_VPA`) protected.
+* **Documentation Cleanup**: Moved reusable implementation guides (`TEXT_ENGINE_SPEC.md`, `MOBILE_SPEC.md`) into `Guide/`, removed obsolete step-by-step specs (`PROJECT_SPEC.md`, `DESIGN_SPEC.md`), and updated `README.md`.
+
+### 2026-11-12 — Buy Me a Coffee & Serverless Support
+* Added multi-step `BuyMeCoffeeModal` (download prompt & footer trigger) with preset/custom INR amounts, UPI QR code generation (`qrcode`), mobile `upi://pay` deep links, UTR confirmation, and Gmail SMTP / Resend thank-you & owner notification emails.
+* Consolidated local Vite dev middleware, Netlify Functions, and Vercel API endpoints around shared handlers in `server/`.
+
+### 2026-11-12 — Shapes & Annotations
+* Added 7 vector shape tools (`ellipse`, `rectangle`, `line`, `arrow`, `polygon`, `cloud`, `polyline`) with customizable stroke/fill colors, opacity, stroke width, and line dash styles exported cleanly to `pdf-lib`.
+* Added 14 PDF annotation icons (`comment`, `chat`, `pointer`, `arrow`, `check`, `circle`, `cross`, `insert`, `np`, `fileNote`, `paragraph`, `question`, `star`, `key`) with editable notes exported as PDF `/Text` popup annotations.
+
+### 2026-11-11 — Text Editing & Alignment Enhancements
+* Added smart same-line text fragment merging (`mergeText.ts`), alignment snap guides (`snapGuides.ts`), `TextObjectView`, and numeric `FontSizeInput` controls.
+* Improved font loading, background color sampling, and multi-span cover bounds during PDF export.
+
+### 2026-11-10 — Data Safety, Mobile Editor, Feedback & SEO
+* **Data Safety**: Added IndexedDB draft auto-save (`draftStorage.ts`), draft restore prompt, and unsaved-changes refresh confirmation (`useUnsavedGuard`, `RefreshConfirmModal`).
+* **Mobile Touch Editor**: Added View/Edit modes, fit-to-width zoom, `visualViewport` keyboard-aware `TextEditSheet`, touch gesture guards, and DPR / 12M pixel canvas memory caps.
+* **Verified Feedback Modal**: Added 6-digit Email OTP verification with optional phone/WhatsApp contact and email dispatch.
+* **Pages & SEO**: Added About, Privacy Policy, Terms of Service, and Contact pages, FAQ guide section, `robots.txt`, `sitemap.xml`, web manifest/favicons, and `AdSlot` configuration guards.
+
+### 2026-11-10 — Precision Text Engine, AI Smart Fit & UI Refresh
+* Upgraded text replacement to metric-compatible bundled fonts (`Arimo`, `Carlito`, `Tinos`, `Cousine`), `@pdf-lib/fontkit` width measurement, baseline-aligned preview/export parity (`layoutText`), and canvas pixel color sampling (`sampleColors`).
+* Added optional local **Ollama** AI text optimization (`Smart Fit`, `Academic Polish`, `Ultra-Concise`) with an offline fallback condenser.
+* Completed Tailwind v4 UI refresh (`Inter Variable`, sticky toolbar, landing hero/trust/workflow sections).
+
+### 2026-11-09 — Initial MVP Release
+* Launched core browser-only PDF editor with React, TypeScript, Vite, `pdfjs-dist`, `pdf-lib`, and Zustand (text editing, text insertion, image insertion, whiteout, highlight, zoom, undo, and instant in-memory PDF export).
 
 ---
 
@@ -130,7 +177,7 @@ To enable local LLM paraphrasing for the AI Smart Fit assistant:
 
 - **Live Deployment (Netlify)**: [https://freepdfediting.netlify.app/](https://freepdfediting.netlify.app/)
 
-Deploying FreePDFEdit is effortless since it compiles to 100% static assets:
+Deploying FreePDFEdit is effortless since it compiles to 100% static assets (optional environment variables in `.env.example` enable AdSense slots, OTP/feedback emails, and Buy Me a Coffee UPI):
 
 ### Deploy on Vercel
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/bmanish55/FreePDFEdit)
