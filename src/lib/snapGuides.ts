@@ -103,12 +103,14 @@ export function buildSnapTargets(
       continue
     }
 
+    const objW = obj.type === 'annotation' ? obj.size : obj.width
+    const objH = obj.type === 'annotation' ? obj.size : obj.height
     const left = obj.x
-    const right = obj.x + obj.width
-    const centerX = obj.x + obj.width / 2
+    const right = obj.x + objW
+    const centerX = obj.x + objW / 2
     const top = obj.y
-    const bottom = obj.y + obj.height
-    const centerY = obj.y + obj.height / 2
+    const bottom = obj.y + objH
+    const centerY = obj.y + objH / 2
 
     vertical.push(
       { pos: left, spanStart: top, spanEnd: bottom, kind: 'object' },

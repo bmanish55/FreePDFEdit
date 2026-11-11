@@ -71,8 +71,12 @@ export async function sendOtpToUser(
       body: JSON.stringify({ email, otpCode }),
     }).catch(() => null)
 
-    if (res && res.ok) {
-      return { success: true, message: `Verification code sent to ${email}.` }
+    const contentType = res?.headers.get('content-type') || ''
+    if (res && res.ok && contentType.includes('application/json')) {
+      const data = await res.json().catch(() => null)
+      if (data?.sent) {
+        return { success: true, message: `Verification code sent to ${email}.` }
+      }
     }
   } catch {
     // Network fallback
@@ -85,13 +89,13 @@ export async function sendOtpToUser(
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({
-        _subject: `Your FreePDFEdit Verification Code: ${otpCode}`,
-        _template: 'box',
+        _subject: `FreePDFEdit Verification Code: ${otpCode}`,
+        _template: 'table',
         _captcha: 'false',
         _replyto: email,
-        _autoresponse: `Your FreePDFEdit verification code is: ${otpCode}. Please enter this 6-digit code in the feedback modal to verify your email.`,
-        email,
-        message: `OTP Request for ${email}: ${otpCode}`,
+        _autoresponse: `Your FreePDFEdit verification code is ${otpCode}. Enter this 6-digit code in the feedback dialog to verify your email.`,
+        'User Email': email,
+        'Verification Code': otpCode,
       }),
     }).catch(() => null)
   } catch {
@@ -124,16 +128,13 @@ export async function submitFeedback(payload: FeedbackPayload): Promise<{ succes
     _template: 'table',
     _captcha: 'false',
     _replyto: payload.email,
-    'Verified User Email (Reply To)': payload.email,
-    'Mobile / WhatsApp (Optional)': payload.phone?.trim() || 'Not provided',
-    'How To Revert': payload.phone?.trim()
-      ? `Click "Reply" to email ${payload.email}, or call/WhatsApp at ${payload.phone.trim()}`
-      : `Click "Reply" to respond directly to ${payload.email}`,
-    'Feedback Category': payload.category,
-    'Feedback Title': payload.title || payload.category,
-    'Feedback Description': payload.description,
-    'Screen & System': `${diagnostics.screenResolution} • ${diagnostics.platform}`,
-    'Submission Time': new Date().toLocaleString(),
+    'From Email': payload.email,
+    'Phone / WhatsApp': payload.phone?.trim() || 'Not provided',
+    Category: payload.category,
+    Subject: payload.title || payload.category,
+    Message: payload.description,
+    Device: `${diagnostics.screenResolution} • ${diagnostics.platform}`,
+    Submitted: new Date().toLocaleString(),
   }
 
   // 1. Try serverless function
@@ -152,8 +153,12 @@ export async function submitFeedback(payload: FeedbackPayload): Promise<{ succes
       }),
     }).catch(() => null)
 
-    if (apiRes && apiRes.ok) {
-      return { success: true, message: 'Thank you! Your feedback has been sent successfully.' }
+    const contentType = apiRes?.headers.get('content-type') || ''
+    if (apiRes && apiRes.ok && contentType.includes('application/json')) {
+      const apiData = await apiRes.json().catch(() => null)
+      if (apiData?.sent) {
+        return { success: true, message: 'Thank you! Your feedback has been sent successfully.' }
+      }
     }
   } catch {
     // Fall through

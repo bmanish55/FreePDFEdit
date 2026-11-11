@@ -5,7 +5,9 @@ import { buildSnapTargets, computeSnapGuides, type SnapTargetSet } from '../lib/
 import { usePdfStore, type EditObject } from '../store/usePdfStore'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useMobileStore } from '../store/useMobileStore'
+import AnnotationObjectView from './AnnotationObjectView'
 import MobileObjectBox from './mobile/MobileObjectBox'
+import ShapeObjectView from './ShapeObjectView'
 import TextObjectView from './TextObjectView'
 
 type ObjectViewProps = {
@@ -36,6 +38,14 @@ export default function ObjectView({ object, zoom }: ObjectViewProps) {
 
   if (object.type === 'text') {
     return <TextObjectView object={object} zoom={zoom} />
+  }
+
+  if (object.type === 'annotation') {
+    return <AnnotationObjectView object={object} zoom={zoom} />
+  }
+
+  if (object.type === 'shape') {
+    return <ShapeObjectView object={object} zoom={zoom} />
   }
 
   if (isMobile) {

@@ -1,6 +1,6 @@
-// Serverless function handler for Vercel / Node deployments
-// Reads receiver email from server-side environment variables or default, keeping it 100% invisible to clients.
+import { buildFeedbackEmailHtml } from '../src/lib/feedback/emailTemplates'
 
+// Serverless function handler for Vercel / Node deployments
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
@@ -35,19 +35,50 @@ export default async function handler(req: any, res: any) {
 
   const subject = `[FreePDFEdit Feedback] [${category || 'General'}] from ${userEmail || contact}`
 
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const device = diagnostics
+        ? `${diagnostics.screenResolution || ''} • ${diagnostics.platform || ''}`
+        : undefined
+      const resendRes = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        },
+        body: JSON.stringify({
+          from: process.env.EMAIL_FROM || 'FreePDFEdit <onboarding@resend.dev>',
+          to: [recipient],
+          reply_to: userEmail || undefined,
+          subject,
+          html: buildFeedbackEmailHtml({
+            email: String(userEmail || contact),
+            phone: userPhone ? String(userPhone) : undefined,
+            category: String(category || 'General'),
+            title: String(title || category || 'General Feedback'),
+            description: String(description),
+            device,
+          }),
+        }),
+      })
+      if (resendRes.ok) {
+        return res.status(200).json({ success: true, sent: true, provider: 'resend' })
+      }
+    } catch (err) {
+      console.error('Resend feedback dispatch error:', err)
+    }
+  }
+
   const payloadToSend = formPayload || {
     _subject: subject,
     _template: 'table',
     _captcha: 'false',
     _replyto: userEmail || undefined,
-    'Verified User Email (Reply To)': userEmail || 'Not provided',
-    'Mobile / WhatsApp (Optional)': userPhone || 'Not provided',
-    'How To Revert': userPhone
-      ? `Click "Reply" to email ${userEmail}, or call/WhatsApp at ${userPhone}`
-      : `Click "Reply" to respond directly to ${userEmail}`,
-    'Feedback Category': category || 'General',
-    'Feedback Title': title || category || 'General Feedback',
-    'Feedback Description': description,
+    'From Email': userEmail || 'Not provided',
+    'Phone / WhatsApp': userPhone || 'Not provided',
+    Category: category || 'General',
+    Subject: title || category || 'General Feedback',
+    Message: description,
     Diagnostics: diagnostics,
   }
 
@@ -62,10 +93,10 @@ export default async function handler(req: any, res: any) {
     })
 
     const data = await forwardRes.json().catch(() => null)
-    return res.status(200).json({ success: true, data })
+    return res.status(200).json({ success: true, sent: forwardRes.ok, data })
   } catch (err) {
     console.error('Server feedback forward error:', err)
   }
 
-  return res.status(200).json({ success: true, message: 'Feedback recorded' })
+  return res.status(200).json({ success: false, sent: false })
 }

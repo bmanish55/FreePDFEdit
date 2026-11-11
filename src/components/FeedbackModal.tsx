@@ -158,27 +158,21 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
       aria-labelledby="feedback-modal-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
     >
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
-        onClick={onClose}
-      />
+      {/* Backdrop (clicking outside intentionally does not dismiss the modal) */}
+      <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity" />
 
       {/* Modal Card */}
       <div className="relative z-10 w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-2xl transition-all my-auto">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3 sm:pb-4">
-          <div className="flex items-center gap-2 sm:gap-2.5">
+        <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 sm:pb-4">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-2.5">
             <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600 shrink-0">
               <MessageSquareHeart size={20} strokeWidth={2} />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <h2 id="feedback-modal-title" className="text-sm sm:text-base font-semibold text-slate-900 truncate">
                 Share Your Feedback
               </h2>
-              <p className="text-[11px] sm:text-xs text-slate-500 truncate">
-                Help us improve FreePDFEdit. Verified submissions get prioritized.
-              </p>
             </div>
           </div>
           <button

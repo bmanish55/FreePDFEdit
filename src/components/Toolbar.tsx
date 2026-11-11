@@ -1,11 +1,13 @@
-import { useRef, type ChangeEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import {
   Bold,
+  ChevronDown,
   Eraser,
   Highlighter,
   ImagePlus,
   Italic,
   Merge,
+  MessageSquarePlus,
   MousePointer2,
   MousePointerClick,
   Trash2,
@@ -17,14 +19,30 @@ import {
 } from 'lucide-react'
 import type { FontFamilyKey } from '../lib/fonts/fontMatcher'
 import { getSameLineCandidates } from '../lib/text/mergeText'
-import { usePdfStore, type TextObject } from '../store/usePdfStore'
+import {
+  usePdfStore,
+  type AnnotationObject,
+  type ShapeObject,
+  type TextObject,
+} from '../store/usePdfStore'
 import ToolButton from './ui/ToolButton'
 import Button from './ui/Button'
 import FontSizeInput from './ui/FontSizeInput'
 import AiOptimizeModal from './AiOptimizeModal'
+import AnnotateStyleBar from './AnnotateStyleBar'
+import ShapeStyleBar from './ShapeStyleBar'
+import ShapeIconSvg, { SHAPE_OPTIONS } from './ui/ShapeIconSvg'
 
 export default function Toolbar() {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const shapeBtnRef = useRef<HTMLButtonElement>(null)
+  const shapeMenuRef = useRef<HTMLDivElement>(null)
+  const [isShapeMenuOpen, setIsShapeMenuOpen] = useState(false)
+  const [shapeMenuPos, setShapeMenuPos] = useState<{ top: number; left: number }>({
+    top: 100,
+    left: 200,
+  })
+
   const zoom = usePdfStore((state) => state.zoom)
   const setZoom = usePdfStore((state) => state.setZoom)
   const activeTool = usePdfStore((state) => state.activeTool)
@@ -35,6 +53,7 @@ export default function Toolbar() {
   const visiblePage = usePdfStore((state) => state.visiblePage)
   const addObject = usePdfStore((state) => state.addObject)
   const selectedId = usePdfStore((state) => state.selectedId)
+  const selectObject = usePdfStore((state) => state.selectObject)
   const objects = usePdfStore((state) => state.objects)
   const updateObject = usePdfStore((state) => state.updateObject)
   const beginHistory = usePdfStore((state) => state.beginHistory)
@@ -44,10 +63,70 @@ export default function Toolbar() {
   const mergeLineForSelected = usePdfStore((state) => state.mergeLineForSelected)
   const isAiModalOpen = usePdfStore((state) => state.isAiModalOpen)
   const setAiModalOpen = usePdfStore((state) => state.setAiModalOpen)
+  const activeShapeKind = usePdfStore((state) => state.activeShapeKind)
+  const setActiveShapeKind = usePdfStore((state) => state.setActiveShapeKind)
 
   const selectedTextObject = objects.find(
     (obj): obj is TextObject => obj.id === selectedId && obj.type === 'text',
   )
+  const selectedAnnotationObject = objects.find(
+    (obj): obj is AnnotationObject =>
+      obj.id === selectedId && obj.type === 'annotation',
+  )
+  const selectedShapeObject = objects.find(
+    (obj): obj is ShapeObject => obj.id === selectedId && obj.type === 'shape',
+  )
+
+  const showAnnotateBar =
+    Boolean(selectedAnnotationObject) ||
+    (activeTool === 'annotate' && !selectedTextObject && !selectedShapeObject)
+  const showShapeBar =
+    Boolean(selectedShapeObject) ||
+    (activeTool === 'shape' && !selectedTextObject && !selectedAnnotationObject)
+
+  useEffect(() => {
+    if (!isShapeMenuOpen) return
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (
+        shapeMenuRef.current?.contains(target) ||
+        shapeBtnRef.current?.contains(target)
+      ) {
+        return
+      }
+      setIsShapeMenuOpen(false)
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation()
+        setIsShapeMenuOpen(false)
+      }
+    }
+    const handleViewportChange = () => setIsShapeMenuOpen(false)
+    window.addEventListener('pointerdown', handlePointerDown)
+    window.addEventListener('keydown', handleKeyDown, true)
+    window.addEventListener('resize', handleViewportChange)
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown)
+      window.removeEventListener('keydown', handleKeyDown, true)
+      window.removeEventListener('resize', handleViewportChange)
+    }
+  }, [isShapeMenuOpen])
+
+  const openShapeMenu = () => {
+    setActiveTool('shape')
+    if (!selectedShapeObject) {
+      selectObject(null)
+    }
+    if (!isShapeMenuOpen && shapeBtnRef.current) {
+      const rect = shapeBtnRef.current.getBoundingClientRect()
+      setShapeMenuPos({
+        top: rect.bottom + 6,
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - 190)),
+      })
+    }
+    setIsShapeMenuOpen((open) => !open)
+  }
   const sameLineCount = selectedTextObject
     ? getSameLineCandidates(
         selectedTextObject,
@@ -138,6 +217,41 @@ export default function Toolbar() {
           onClick={() => setActiveTool('highlight')}
           className="shrink-0"
         />
+        <ToolButton
+          icon={<MessageSquarePlus size={18} strokeWidth={2} />}
+          label="Annotate"
+          active={activeTool === 'annotate'}
+          onClick={() => {
+            setIsShapeMenuOpen(false)
+            setActiveTool('annotate')
+            if (!selectedAnnotationObject) {
+              selectObject(null)
+            }
+          }}
+          className="shrink-0"
+        />
+        <button
+          ref={shapeBtnRef}
+          type="button"
+          onClick={openShapeMenu}
+          title="Shapes"
+          aria-expanded={isShapeMenuOpen}
+          aria-haspopup="menu"
+          className={`flex h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
+            activeTool === 'shape'
+              ? 'bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-200'
+              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+          }`}
+        >
+          <ShapeIconSvg kind={activeShapeKind} size={18} />
+          <span className="hidden sm:inline">Shapes</span>
+          <ChevronDown
+            size={14}
+            className={`transition-transform duration-150 ${
+              isShapeMenuOpen ? 'rotate-180' : ''
+            }`}
+          />
+        </button>
 
         {/* Divider */}
         <div className="mx-2 h-6 w-px shrink-0 bg-slate-200" />
@@ -178,11 +292,6 @@ export default function Toolbar() {
           onClick={() => setZoom(zoom + 0.1)}
           className="shrink-0"
         />
-
-        {/* Hint */}
-        <span className="ml-auto hidden shrink-0 text-xs text-slate-500 lg:inline">
-          Edited text matches original font.
-        </span>
       </div>
 
       {/* 2. Text properties bar */}
@@ -313,6 +422,57 @@ export default function Toolbar() {
               <span>AI Fit & Polish</span>
             </Button>
           </div>
+        </div>
+      )}
+
+      {isShapeMenuOpen && (
+        <div
+          ref={shapeMenuRef}
+          role="menu"
+          aria-label="Shape tools"
+          style={{ top: `${shapeMenuPos.top}px`, left: `${shapeMenuPos.left}px` }}
+          className="fixed z-50 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"
+        >
+          {SHAPE_OPTIONS.map((opt) => {
+            const isActive = activeShapeKind === opt.kind && activeTool === 'shape'
+            return (
+              <button
+                key={opt.kind}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setActiveShapeKind(opt.kind)
+                  setActiveTool('shape')
+                  if (!selectedShapeObject) {
+                    selectObject(null)
+                  }
+                  setIsShapeMenuOpen(false)
+                }}
+                className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors ${
+                  isActive
+                    ? 'bg-brand-50 font-medium text-brand-700'
+                    : 'text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <ShapeIconSvg kind={opt.kind} size={18} />
+                <span>{opt.label}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* 2. Annotate properties bar */}
+      {showAnnotateBar && (
+        <div className="border-t border-slate-200 bg-slate-50">
+          <AnnotateStyleBar />
+        </div>
+      )}
+
+      {/* 3. Shape properties bar */}
+      {showShapeBar && (
+        <div className="border-t border-slate-200 bg-slate-50">
+          <ShapeStyleBar />
         </div>
       )}
 

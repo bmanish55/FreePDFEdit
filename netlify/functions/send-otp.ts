@@ -1,4 +1,6 @@
-// Serverless OTP delivery function for Vercel and Netlify
+import { buildOtpEmailHtml } from '../../src/lib/feedback/emailTemplates'
+
+// Serverless OTP delivery function for Netlify
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
@@ -10,20 +12,11 @@ export default async function handler(req: any, res: any) {
   }
 
   const subject = `Your FreePDFEdit Verification Code: ${otpCode}`
-  const bodyText = `Hello,
-
-Your one-time verification code for FreePDFEdit is:
-
-    ${otpCode}
-
-This code will expire in 10 minutes. If you did not request this, please ignore this message.
-
-Best regards,
-FreePDFEdit Team`
+  const bodyText = `Hello,\n\nYour one-time verification code for FreePDFEdit is: ${otpCode}\n\nThis code will expire in 10 minutes. If you did not request this, please ignore this message.`
 
   try {
     if (process.env.RESEND_API_KEY) {
-      await fetch('https://api.resend.com/emails', {
+      const resendRes = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -34,12 +27,16 @@ FreePDFEdit Team`
           to: [email],
           subject,
           text: bodyText,
+          html: buildOtpEmailHtml(String(otpCode)),
         }),
       })
+      if (resendRes.ok) {
+        return res.status(200).json({ success: true, sent: true, provider: 'resend' })
+      }
     }
   } catch (err) {
     console.error('OTP email dispatch error:', err)
   }
 
-  return res.status(200).json({ success: true, message: 'OTP dispatched' })
+  return res.status(200).json({ success: false, sent: false })
 }

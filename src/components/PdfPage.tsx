@@ -3,9 +3,16 @@ import type { MouseEvent, PointerEvent } from 'react'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { screenToPdf } from '../lib/coords'
 import { extractText, type TextRun } from '../lib/text/extractText'
+import { getBoundingBoxFromPoints } from '../lib/shapes/shapeGeometry'
 import { getCoveredRunKeys, isSameHorizontalLine } from '../lib/text/mergeText'
 import ObjectView from './ObjectView'
-import { sortObjectsByLayer, usePdfStore, type TextObject } from '../store/usePdfStore'
+import ShapeSvg from './ui/ShapeSvg'
+import {
+  sortObjectsByLayer,
+  usePdfStore,
+  type ShapePoint,
+  type TextObject,
+} from '../store/usePdfStore'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useMobileStore } from '../store/useMobileStore'
 
@@ -22,6 +29,9 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
   const [textRuns, setTextRuns] = useState<TextRun[]>([])
   const [drawPreview, setDrawPreview] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
+  const [shapeDragPreview, setShapeDragPreview] = useState<{ start: ShapePoint; end: ShapePoint } | null>(null)
+  const [polyPoints, setPolyPoints] = useState<ShapePoint[]>([])
+  const [polyHover, setPolyHover] = useState<ShapePoint | null>(null)
   const [renderError, setRenderError] = useState('')
   const drawStart = useRef({ x: 0, y: 0 })
   const activeTool = usePdfStore((state) => state.activeTool)
@@ -38,6 +48,10 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
   const mergeSourceId = usePdfStore((state) => state.mergeSourceId)
   const setMergeSourceId = usePdfStore((state) => state.setMergeSourceId)
   const mergeWithTarget = usePdfStore((state) => state.mergeWithTarget)
+  const activeAnnotationIcon = usePdfStore((state) => state.activeAnnotationIcon)
+  const activeAnnotationColor = usePdfStore((state) => state.activeAnnotationColor)
+  const activeShapeKind = usePdfStore((state) => state.activeShapeKind)
+  const activeShapeStyle = usePdfStore((state) => state.activeShapeStyle)
   const isMobile = useIsMobile()
   const mobileMode = useMobileStore((state) => state.mode)
   const openTextEditor = useMobileStore((state) => state.openTextEditor)
@@ -184,6 +198,57 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
 
   const textTouchStart = useRef<{ x: number; y: number; time: number } | null>(null)
   const overlayTouchStart = useRef<{ x: number; y: number; time: number } | null>(null)
+  const isMultiPointShape =
+    activeShapeKind === 'polygon' ||
+    activeShapeKind === 'cloud' ||
+    activeShapeKind === 'polyline'
+
+  const finishMultiPointShape = (pointsToCommit = polyPoints) => {
+    const minPoints = activeShapeKind === 'polyline' ? 2 : 3
+    if (pointsToCommit.length < minPoints) {
+      setPolyPoints([])
+      setPolyHover(null)
+      return
+    }
+    const bbox = getBoundingBoxFromPoints(pointsToCommit)
+    addObject({
+      id: crypto.randomUUID(),
+      type: 'shape',
+      page: pageNumber,
+      shape: activeShapeKind,
+      ...bbox,
+      points: pointsToCommit,
+      ...activeShapeStyle,
+    })
+    setPolyPoints([])
+    setPolyHover(null)
+    setActiveTool('select')
+  }
+
+  useEffect(() => {
+    if (activeTool !== 'shape' || !isMultiPointShape) {
+      setPolyPoints([])
+      setPolyHover(null)
+    }
+  }, [activeTool, activeShapeKind, isMultiPointShape])
+
+  useEffect(() => {
+    if (polyPoints.length === 0) return
+    const handlePolyKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        event.stopPropagation()
+        finishMultiPointShape()
+      } else if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        setPolyPoints([])
+        setPolyHover(null)
+      }
+    }
+    window.addEventListener('keydown', handlePolyKey, true)
+    return () => window.removeEventListener('keydown', handlePolyKey, true)
+  })
 
   const handleOverlayPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (mergeSourceId !== null) {
@@ -198,7 +263,23 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
       return
     }
 
-    if (activeTool === 'addText') {
+    if (activeTool === 'shape') {
+      const bounds = event.currentTarget.getBoundingClientRect()
+      const pt = screenToPdf({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, zoom)
+      drawStart.current = pt
+      if (isMultiPointShape) {
+        if (activeShapeKind === 'cloud' && polyPoints.length === 0) {
+          setShapeDragPreview({ start: pt, end: pt })
+          event.currentTarget.setPointerCapture(event.pointerId)
+        }
+        return
+      }
+      setShapeDragPreview({ start: pt, end: pt })
+      event.currentTarget.setPointerCapture(event.pointerId)
+      return
+    }
+
+    if (activeTool === 'addText' || activeTool === 'annotate') {
       overlayTouchStart.current = {
         x: event.clientX,
         y: event.clientY,
@@ -211,9 +292,22 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
   }
 
   const handleOverlayPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (activeTool === 'shape' && isMultiPointShape && polyPoints.length > 0) {
+      const bounds = event.currentTarget.getBoundingClientRect()
+      setPolyHover(
+        screenToPdf({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, zoom),
+      )
+    }
+
     if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
     const bounds = event.currentTarget.getBoundingClientRect()
     const point = screenToPdf({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, zoom)
+
+    if (activeTool === 'shape') {
+      setShapeDragPreview({ start: drawStart.current, end: point })
+      return
+    }
+
     setDrawPreview({
       x: Math.min(drawStart.current.x, point.x),
       y: Math.min(drawStart.current.y, point.y),
@@ -245,17 +339,116 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
       return
     }
 
-    if (activeTool === 'addText' && overlayTouchStart.current) {
+    if (activeTool === 'shape') {
+      const bounds = event.currentTarget.getBoundingClientRect()
+      const point = screenToPdf({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, zoom)
+      const dragDist = Math.hypot(point.x - drawStart.current.x, point.y - drawStart.current.y)
+
+      if (isMultiPointShape) {
+        if (activeShapeKind === 'cloud' && polyPoints.length === 0 && dragDist >= 14) {
+          setShapeDragPreview(null)
+          const x = Math.min(drawStart.current.x, point.x)
+          const y = Math.min(drawStart.current.y, point.y)
+          const width = Math.abs(point.x - drawStart.current.x)
+          const height = Math.abs(point.y - drawStart.current.y)
+          addObject({
+            id: crypto.randomUUID(),
+            type: 'shape',
+            page: pageNumber,
+            shape: 'cloud',
+            x,
+            y,
+            width,
+            height,
+            points: [
+              { x, y },
+              { x: x + width, y },
+              { x: x + width, y: y + height },
+              { x, y: y + height },
+            ],
+            ...activeShapeStyle,
+          })
+          setActiveTool('select')
+          return
+        }
+        setShapeDragPreview(null)
+        if (polyPoints.length >= 3 && activeShapeKind !== 'polyline') {
+          const first = polyPoints[0]
+          if (Math.hypot(point.x - first.x, point.y - first.y) <= 9) {
+            finishMultiPointShape(polyPoints)
+            return
+          }
+        }
+        setPolyPoints((prev) => [...prev, point])
+        return
+      }
+
+      setShapeDragPreview(null)
+      if (activeShapeKind === 'line' || activeShapeKind === 'arrow') {
+        if (dragDist < 6) return
+        const pts = [drawStart.current, point]
+        const bbox = getBoundingBoxFromPoints(pts)
+        addObject({
+          id: crypto.randomUUID(),
+          type: 'shape',
+          page: pageNumber,
+          shape: activeShapeKind,
+          ...bbox,
+          points: pts,
+          ...activeShapeStyle,
+        })
+        setActiveTool('select')
+        return
+      }
+
+      const rect = {
+        x: Math.min(drawStart.current.x, point.x),
+        y: Math.min(drawStart.current.y, point.y),
+        width: Math.abs(point.x - drawStart.current.x),
+        height: Math.abs(point.y - drawStart.current.y),
+      }
+      if (rect.width < 6 || rect.height < 6) return
+      addObject({
+        id: crypto.randomUUID(),
+        type: 'shape',
+        page: pageNumber,
+        shape: activeShapeKind,
+        ...rect,
+        ...activeShapeStyle,
+      })
+      setActiveTool('select')
+      return
+    }
+
+    if ((activeTool === 'addText' || activeTool === 'annotate') && overlayTouchStart.current) {
       const dx = event.clientX - overlayTouchStart.current.x
       const dy = event.clientY - overlayTouchStart.current.y
       const distance = Math.hypot(dx, dy)
       const duration = Date.now() - overlayTouchStart.current.time
       overlayTouchStart.current = null
 
-      // Only add text on clean tap, not on swipe/scroll
       if (distance < 14 && duration < 500) {
         const bounds = event.currentTarget.getBoundingClientRect()
         const point = screenToPdf({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, zoom)
+        if (activeTool === 'annotate') {
+          const size = 24
+          const pageW = dimensions.width / zoom
+          const pageH = dimensions.height / zoom
+          addObject({
+            id: crypto.randomUUID(),
+            type: 'annotation',
+            page: pageNumber,
+            x: Math.min(Math.max(0, point.x - size / 2), Math.max(0, pageW - size)),
+            y: Math.min(Math.max(0, point.y - size / 2), Math.max(0, pageH - size)),
+            size,
+            icon: activeAnnotationIcon,
+            color: activeAnnotationColor,
+            note: '',
+          })
+          setActiveTool('select')
+          return
+        }
+
         addObject({
           id: crypto.randomUUID(),
           type: 'text',
@@ -449,6 +642,81 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
         setActiveTool('select')
         return
       }
+      if (activeTool === 'annotate') {
+        commitTextEditor()
+        const bounds = event.currentTarget.getBoundingClientRect()
+        const point = screenToPdf({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, zoom)
+        const pageWidth = dimensions.width / zoom
+        const pageHeight = dimensions.height / zoom
+        const size = 24
+        addObject({
+          id: crypto.randomUUID(),
+          type: 'annotation',
+          page: pageNumber,
+          x: Math.min(Math.max(0, point.x - size / 2), Math.max(0, pageWidth - size)),
+          y: Math.min(Math.max(0, point.y - size / 2), Math.max(0, pageHeight - size)),
+          size,
+          icon: activeAnnotationIcon,
+          color: activeAnnotationColor,
+          note: '',
+        })
+        setActiveTool('select')
+        return
+      }
+      if (activeTool === 'shape') {
+        commitTextEditor()
+        const bounds = event.currentTarget.getBoundingClientRect()
+        const point = screenToPdf({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, zoom)
+        const pageWidth = dimensions.width / zoom
+        const pageHeight = dimensions.height / zoom
+        const w = activeShapeKind === 'line' || activeShapeKind === 'arrow' ? 100 : 96
+        const h = activeShapeKind === 'line' || activeShapeKind === 'arrow' ? 0 : 60
+        const x = Math.min(Math.max(0, point.x - w / 2), Math.max(0, pageWidth - w))
+        const y = Math.min(Math.max(0, point.y - h / 2), Math.max(0, pageHeight - Math.max(h, 12)))
+
+        let points: ShapePoint[] | undefined
+        if (activeShapeKind === 'line' || activeShapeKind === 'arrow') {
+          points = [
+            { x, y },
+            { x: x + w, y },
+          ]
+        } else if (activeShapeKind === 'polygon') {
+          points = [
+            { x: x + w / 2, y },
+            { x: x + w, y: y + h },
+            { x, y: y + h },
+          ]
+        } else if (activeShapeKind === 'cloud') {
+          points = [
+            { x, y },
+            { x: x + w, y },
+            { x: x + w, y: y + h },
+            { x, y: y + h },
+          ]
+        } else if (activeShapeKind === 'polyline') {
+          points = [
+            { x, y: y + h },
+            { x: x + w * 0.35, y },
+            { x: x + w * 0.65, y: y + h },
+            { x: x + w, y },
+          ]
+        }
+
+        addObject({
+          id: crypto.randomUUID(),
+          type: 'shape',
+          page: pageNumber,
+          shape: activeShapeKind,
+          x,
+          y,
+          width: w,
+          height: h,
+          ...(points ? { points } : {}),
+          ...activeShapeStyle,
+        })
+        setActiveTool('select')
+        return
+      }
       commitTextEditor()
       selectObject(null)
     }
@@ -524,7 +792,10 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
             className={`absolute inset-0 ${
               activeTool === 'addText'
                 ? 'cursor-text'
-                : activeTool === 'whiteout' || activeTool === 'highlight'
+                : activeTool === 'whiteout' ||
+                    activeTool === 'highlight' ||
+                    activeTool === 'shape' ||
+                    activeTool === 'annotate'
                   ? 'cursor-crosshair'
                   : ''
             }`}
@@ -532,6 +803,12 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
             onPointerDown={handleOverlayPointerDown}
             onPointerMove={handleOverlayPointerMove}
             onPointerUp={handleOverlayPointerUp}
+            onDoubleClick={(event) => {
+              if (activeTool === 'shape' && isMultiPointShape && polyPoints.length > 0) {
+                event.stopPropagation()
+                finishMultiPointShape()
+              }
+            }}
           >
             {activeTool === 'select' &&
               uncoveredRuns.map((run) => {
@@ -598,6 +875,110 @@ export default function PdfPage({ document, pageNumber, zoom }: PdfPageProps) {
                 }}
               />
             )}
+            {shapeDragPreview && (() => {
+              const isLineLike = activeShapeKind === 'line' || activeShapeKind === 'arrow'
+              const previewPts = isLineLike
+                ? [shapeDragPreview.start, shapeDragPreview.end]
+                : undefined
+              const bbox = isLineLike
+                ? getBoundingBoxFromPoints(previewPts!)
+                : {
+                    x: Math.min(shapeDragPreview.start.x, shapeDragPreview.end.x),
+                    y: Math.min(shapeDragPreview.start.y, shapeDragPreview.end.y),
+                    width: Math.abs(shapeDragPreview.end.x - shapeDragPreview.start.x),
+                    height: Math.abs(shapeDragPreview.end.y - shapeDragPreview.start.y),
+                  }
+              return (
+                <div
+                  className="pointer-events-none absolute z-30"
+                  style={{
+                    left: bbox.x * zoom,
+                    top: bbox.y * zoom,
+                    width: Math.max(1, bbox.width * zoom),
+                    height: Math.max(1, bbox.height * zoom),
+                  }}
+                >
+                  <ShapeSvg
+                    shape={activeShapeKind === 'cloud' ? 'rectangle' : activeShapeKind}
+                    x={bbox.x}
+                    y={bbox.y}
+                    width={bbox.width}
+                    height={bbox.height}
+                    points={previewPts}
+                    strokeColor={activeShapeStyle.strokeColor}
+                    fillColor={activeShapeStyle.fillColor}
+                    opacity={activeShapeStyle.opacity}
+                    strokeWidth={activeShapeStyle.strokeWidth}
+                    lineStyle={activeShapeStyle.lineStyle}
+                    zoom={zoom}
+                  />
+                </div>
+              )
+            })()}
+            {polyPoints.length > 0 && (() => {
+              const previewPts = polyHover ? [...polyPoints, polyHover] : polyPoints
+              const bbox = getBoundingBoxFromPoints(previewPts)
+              return (
+                <>
+                  <div
+                    className="pointer-events-none absolute z-30"
+                    style={{
+                      left: bbox.x * zoom,
+                      top: bbox.y * zoom,
+                      width: Math.max(1, bbox.width * zoom),
+                      height: Math.max(1, bbox.height * zoom),
+                    }}
+                  >
+                    <ShapeSvg
+                      shape={activeShapeKind}
+                      x={bbox.x}
+                      y={bbox.y}
+                      width={bbox.width}
+                      height={bbox.height}
+                      points={previewPts}
+                      strokeColor={activeShapeStyle.strokeColor}
+                      fillColor={activeShapeStyle.fillColor}
+                      opacity={activeShapeStyle.opacity}
+                      strokeWidth={activeShapeStyle.strokeWidth}
+                      lineStyle={activeShapeStyle.lineStyle}
+                      zoom={zoom}
+                    />
+                  </div>
+                  {polyPoints.map((pt, i) => (
+                    <span
+                      key={i}
+                      className="pointer-events-none absolute z-30 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-600 ring-2 ring-white"
+                      style={{ left: pt.x * zoom, top: pt.y * zoom }}
+                    />
+                  ))}
+                  <div
+                    onPointerDown={(e) => e.stopPropagation()}
+                    className="absolute left-1/2 top-2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full bg-slate-900/90 px-3 py-1 text-xs text-white shadow-md"
+                  >
+                    <span>Click points · Double-click or Enter to finish</span>
+                    {polyPoints.length >= (activeShapeKind === 'polyline' ? 2 : 3) && (
+                      <button
+                        type="button"
+                        onClick={() => finishMultiPointShape()}
+                        className="rounded bg-brand-500 px-2 py-0.5 font-medium text-white hover:bg-brand-600"
+                      >
+                        Finish
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPolyPoints([])
+                        setPolyHover(null)
+                      }}
+                      className="text-slate-300 hover:text-white"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              )
+            })()}
           </div>
         )}
         {!dimensions.width && !renderError && (

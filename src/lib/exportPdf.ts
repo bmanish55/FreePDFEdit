@@ -1,10 +1,31 @@
 import fontkit from '@pdf-lib/fontkit'
-import { PDFDocument, StandardFonts, rgb, type PDFFont } from 'pdf-lib'
+import {
+  LineCapStyle,
+  PDFDocument,
+  PDFHexString,
+  StandardFonts,
+  rgb,
+  type PDFFont,
+  type PDFPage,
+  type PDFRef,
+} from 'pdf-lib'
+import { getAnnotationIcon } from './annotations/annotationIcons'
 import { topLeftToPdfY } from './coords'
 import { LATIN_FONT_FEATURES, loadFont, type LoadedFont } from './fonts/fontLoader'
 import { hasDevanagari } from './fonts/fontMatcher'
+import {
+  buildArrowGeometry,
+  buildCloudSvgPath,
+  buildPointsSvgPath,
+  getDashArray,
+} from './shapes/shapeGeometry'
 import { layoutText } from './text/layoutText'
-import { sortObjectsByLayer, type EditObject } from '../store/usePdfStore'
+import {
+  sortObjectsByLayer,
+  type AnnotationObject,
+  type EditObject,
+  type ShapeObject,
+} from '../store/usePdfStore'
 
 function hexToRgb(hex: string) {
   const value = hex.replace('#', '')
@@ -12,6 +33,187 @@ function hexToRgb(hex: string) {
     value.length === 3 ? value.split('').map((part) => `${part}${part}`).join('') : value
   const number = Number.parseInt(normalized, 16) || 0
   return rgb(((number >> 16) & 255) / 255, ((number >> 8) & 255) / 255, (number & 255) / 255)
+}
+
+function drawShapeToPdfPage(page: PDFPage, object: ShapeObject, pageHeight: number): void {
+  const dashArray = getDashArray(object.lineStyle, object.strokeWidth)
+  const strokeRgb = hexToRgb(object.strokeColor)
+  const fillRgb = object.fillColor ? hexToRgb(object.fillColor) : undefined
+  const opacity = object.opacity
+
+  if (object.shape === 'rectangle') {
+    page.drawRectangle({
+      x: object.x,
+      y: topLeftToPdfY(pageHeight, object.y, object.height),
+      width: Math.max(1, object.width),
+      height: Math.max(1, object.height),
+      borderColor: strokeRgb,
+      borderWidth: object.strokeWidth,
+      borderOpacity: opacity,
+      ...(dashArray.length > 0 ? { borderDashArray: dashArray } : {}),
+      ...(fillRgb ? { color: fillRgb, opacity } : {}),
+    })
+    return
+  }
+
+  if (object.shape === 'ellipse') {
+    page.drawEllipse({
+      x: object.x + object.width / 2,
+      y: pageHeight - (object.y + object.height / 2),
+      xScale: Math.max(1, object.width / 2),
+      yScale: Math.max(1, object.height / 2),
+      borderColor: strokeRgb,
+      borderWidth: object.strokeWidth,
+      borderOpacity: opacity,
+      ...(dashArray.length > 0 ? { borderDashArray: dashArray } : {}),
+      ...(fillRgb ? { color: fillRgb, opacity } : {}),
+    })
+    return
+  }
+
+  if (object.shape === 'line' || object.shape === 'arrow') {
+    const p0 = object.points?.[0] ?? { x: object.x, y: object.y }
+    const p1 = object.points?.[1] ?? {
+      x: object.x + object.width,
+      y: object.y + object.height,
+    }
+    if (object.shape === 'line') {
+      page.drawLine({
+        start: { x: p0.x, y: pageHeight - p0.y },
+        end: { x: p1.x, y: pageHeight - p1.y },
+        thickness: object.strokeWidth,
+        color: strokeRgb,
+        opacity,
+        lineCap: LineCapStyle.Round,
+        ...(dashArray.length > 0 ? { dashArray } : {}),
+      })
+      return
+    }
+    const arrow = buildArrowGeometry(p0, p1, object.strokeWidth)
+    page.drawLine({
+      start: { x: arrow.shaftStart.x, y: pageHeight - arrow.shaftStart.y },
+      end: { x: arrow.shaftEnd.x, y: pageHeight - arrow.shaftEnd.y },
+      thickness: object.strokeWidth,
+      color: strokeRgb,
+      opacity,
+      lineCap: LineCapStyle.Round,
+      ...(dashArray.length > 0 ? { dashArray } : {}),
+    })
+    if (arrow.headPath) {
+      page.drawSvgPath(arrow.headPath, {
+        x: 0,
+        y: pageHeight,
+        scale: 1,
+        color: strokeRgb,
+        opacity,
+      })
+    }
+    return
+  }
+
+  const defaultBoxPoints = [
+    { x: object.x, y: object.y },
+    { x: object.x + object.width, y: object.y },
+    { x: object.x + object.width, y: object.y + object.height },
+    { x: object.x, y: object.y + object.height },
+  ]
+  const pts =
+    object.points && object.points.length >= 2 ? object.points : defaultBoxPoints
+
+  if (object.shape === 'cloud') {
+    const d = buildCloudSvgPath(pts.length >= 3 ? pts : defaultBoxPoints)
+    if (!d) return
+    page.drawSvgPath(d, {
+      x: 0,
+      y: pageHeight,
+      scale: 1,
+      borderColor: strokeRgb,
+      borderWidth: object.strokeWidth,
+      borderOpacity: opacity,
+      borderLineCap: LineCapStyle.Round,
+      ...(dashArray.length > 0 ? { borderDashArray: dashArray } : {}),
+      ...(fillRgb ? { color: fillRgb, opacity } : {}),
+    })
+    return
+  }
+
+  const isClosed = object.shape === 'polygon'
+  const d = buildPointsSvgPath(pts, isClosed)
+  if (!d) return
+  page.drawSvgPath(d, {
+    x: 0,
+    y: pageHeight,
+    scale: 1,
+    borderColor: strokeRgb,
+    borderWidth: object.strokeWidth,
+    borderOpacity: opacity,
+    borderLineCap: LineCapStyle.Round,
+    ...(dashArray.length > 0 ? { borderDashArray: dashArray } : {}),
+    ...(isClosed && fillRgb ? { color: fillRgb, opacity } : {}),
+  })
+}
+
+function drawAnnotationToPdfPage(
+  pdf: PDFDocument,
+  page: PDFPage,
+  object: AnnotationObject,
+  pageHeight: number,
+  emptyApRef: { current: PDFRef | null },
+): void {
+  const def = getAnnotationIcon(object.icon)
+  const iconScale = object.size / 24
+  const annotColor = hexToRgb(object.color)
+
+  for (const prim of def.primitives) {
+    if (prim.mode === 'fill') {
+      page.drawSvgPath(prim.d, {
+        x: object.x,
+        y: pageHeight - object.y,
+        scale: iconScale,
+        color: annotColor,
+      })
+    } else if (prim.mode === 'knockout') {
+      page.drawSvgPath(prim.d, {
+        x: object.x,
+        y: pageHeight - object.y,
+        scale: iconScale,
+        color: rgb(1, 1, 1),
+      })
+    } else {
+      page.drawSvgPath(prim.d, {
+        x: object.x,
+        y: pageHeight - object.y,
+        scale: iconScale,
+        borderColor: annotColor,
+        borderWidth: prim.strokeWidth ?? 2,
+        borderLineCap: LineCapStyle.Round,
+      })
+    }
+  }
+
+  const note = object.note.trim()
+  if (note) {
+    if (!emptyApRef.current) {
+      const emptyForm = pdf.context.flateStream('', {
+        Type: 'XObject',
+        Subtype: 'Form',
+        BBox: [0, 0, 24, 24],
+        Resources: {},
+      })
+      emptyApRef.current = pdf.context.register(emptyForm)
+    }
+    const bottomY = topLeftToPdfY(pageHeight, object.y, object.size)
+    const annotDict = pdf.context.obj({
+      Type: 'Annot',
+      Subtype: 'Text',
+      Rect: [object.x, bottomY, object.x + object.size, bottomY + object.size],
+      Contents: PDFHexString.fromText(note),
+      T: PDFHexString.fromText('FreePDFEdit'),
+      F: 4,
+      AP: { N: emptyApRef.current },
+    })
+    page.node.addAnnot(pdf.context.register(annotDict))
+  }
 }
 
 export async function exportPdf(
@@ -153,7 +355,9 @@ export async function exportPdf(
   }
 
   for (const object of orderedObjects) {
-    if (object.type !== 'highlight' && object.type !== 'image') continue
+    if (object.type !== 'highlight' && object.type !== 'image' && object.type !== 'shape') {
+      continue
+    }
     const page = pdf.getPage(object.page - 1)
     const { height } = page.getSize()
 
@@ -177,6 +381,8 @@ export async function exportPdf(
         width: object.width,
         height: object.height,
       })
+    } else if (object.type === 'shape') {
+      drawShapeToPdfPage(page, object, height)
     }
   }
 
@@ -232,6 +438,14 @@ export async function exportPdf(
         'Some characters could not be encoded. Please remove unsupported symbols.',
       )
     }
+  }
+
+  const emptyApRef: { current: PDFRef | null } = { current: null }
+  for (const object of orderedObjects) {
+    if (object.type !== 'annotation') continue
+    const page = pdf.getPage(object.page - 1)
+    const { height } = page.getSize()
+    drawAnnotationToPdfPage(pdf, page, object, height, emptyApRef)
   }
 
   const editedBytes = await pdf.save()

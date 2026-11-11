@@ -82,14 +82,95 @@ export type RectObject = {
   height: number
 }
 
-export type EditObject = TextObject | ImageObject | RectObject
-export type ActiveTool = 'select' | 'addText' | 'addImage' | 'whiteout' | 'highlight'
+export type AnnotationIconKey =
+  | 'comment'
+  | 'chat'
+  | 'pointer'
+  | 'arrow'
+  | 'check'
+  | 'circle'
+  | 'cross'
+  | 'insert'
+  | 'np'
+  | 'fileNote'
+  | 'paragraph'
+  | 'question'
+  | 'star'
+  | 'key'
+
+export type AnnotationObject = {
+  id: string
+  type: 'annotation'
+  page: number
+  x: number
+  y: number
+  size: number
+  icon: AnnotationIconKey
+  color: string
+  note: string
+}
+
+export type ShapeKind =
+  | 'ellipse'
+  | 'line'
+  | 'arrow'
+  | 'rectangle'
+  | 'polygon'
+  | 'cloud'
+  | 'polyline'
+
+export type LineStyle = 'solid' | 'dashed' | 'dotted'
+
+export type ShapePoint = { x: number; y: number }
+
+export type ShapeStyle = {
+  strokeColor: string
+  fillColor: string | null
+  opacity: number
+  strokeWidth: number
+  lineStyle: LineStyle
+}
+
+export type ShapeObject = {
+  id: string
+  type: 'shape'
+  page: number
+  shape: ShapeKind
+  x: number
+  y: number
+  width: number
+  height: number
+  points?: ShapePoint[]
+  strokeColor: string
+  fillColor: string | null
+  opacity: number
+  strokeWidth: number
+  lineStyle: LineStyle
+}
+
+export type EditObject =
+  | TextObject
+  | ImageObject
+  | RectObject
+  | AnnotationObject
+  | ShapeObject
+
+export type ActiveTool =
+  | 'select'
+  | 'addText'
+  | 'addImage'
+  | 'whiteout'
+  | 'highlight'
+  | 'annotate'
+  | 'shape'
 
 const LAYER_ORDER: Record<EditObject['type'], number> = {
   whiteout: 0,
   highlight: 1,
   image: 2,
-  text: 3,
+  shape: 3,
+  text: 4,
+  annotation: 5,
 }
 
 export function sortObjectsByLayer(objects: EditObject[]): EditObject[] {
@@ -149,6 +230,10 @@ type PdfState = {
   pageSizes: Record<number, PageSize>
   activeGuides: AlignmentGuide[]
   mergeSourceId: string | null
+  activeAnnotationIcon: AnnotationIconKey
+  activeAnnotationColor: string
+  activeShapeKind: ShapeKind
+  activeShapeStyle: ShapeStyle
   isAiModalOpen: boolean
   setAiModalOpen: (open: boolean) => void
   isFeedbackModalOpen: boolean
@@ -163,6 +248,10 @@ type PdfState = {
   setPageSize: (page: number, size: PageSize) => void
   setActiveGuides: (guides: AlignmentGuide[]) => void
   setMergeSourceId: (id: string | null) => void
+  setActiveAnnotationIcon: (icon: AnnotationIconKey) => void
+  setActiveAnnotationColor: (color: string) => void
+  setActiveShapeKind: (kind: ShapeKind) => void
+  updateActiveShapeStyle: (changes: Partial<ShapeStyle>) => void
   addObject: (object: EditObject) => void
   updateObject: (id: string, changes: Partial<EditObject>, saveHistory?: boolean) => void
   beginHistory: () => void
@@ -214,6 +303,16 @@ export const usePdfStore = create<PdfState>((set) => ({
   pageSizes: {},
   activeGuides: [],
   mergeSourceId: null,
+  activeAnnotationIcon: 'comment',
+  activeAnnotationColor: '#facc15',
+  activeShapeKind: 'rectangle',
+  activeShapeStyle: {
+    strokeColor: '#2563eb',
+    fillColor: null,
+    opacity: 1,
+    strokeWidth: 3,
+    lineStyle: 'solid',
+  },
   isAiModalOpen: false,
   setAiModalOpen: (isAiModalOpen) => set({ isAiModalOpen }),
   isFeedbackModalOpen: false,
@@ -285,6 +384,50 @@ export const usePdfStore = create<PdfState>((set) => ({
     }),
   setActiveGuides: (activeGuides) => set({ activeGuides }),
   setMergeSourceId: (mergeSourceId) => set({ mergeSourceId }),
+  setActiveAnnotationIcon: (activeAnnotationIcon) =>
+    set((state) => {
+      const selected = state.objects.find(
+        (obj) => obj.id === state.selectedId && obj.type === 'annotation',
+      )
+      if (!selected) return { activeAnnotationIcon }
+      return {
+        activeAnnotationIcon,
+        objects: state.objects.map((obj) =>
+          obj.id === selected.id ? { ...obj, icon: activeAnnotationIcon } : obj,
+        ),
+        history: [...state.history, state.objects],
+      }
+    }),
+  setActiveAnnotationColor: (activeAnnotationColor) =>
+    set((state) => {
+      const selected = state.objects.find(
+        (obj) => obj.id === state.selectedId && obj.type === 'annotation',
+      )
+      if (!selected) return { activeAnnotationColor }
+      return {
+        activeAnnotationColor,
+        objects: state.objects.map((obj) =>
+          obj.id === selected.id ? { ...obj, color: activeAnnotationColor } : obj,
+        ),
+        history: [...state.history, state.objects],
+      }
+    }),
+  setActiveShapeKind: (activeShapeKind) => set({ activeShapeKind }),
+  updateActiveShapeStyle: (changes) =>
+    set((state) => {
+      const nextStyle = { ...state.activeShapeStyle, ...changes }
+      const selected = state.objects.find(
+        (obj) => obj.id === state.selectedId && obj.type === 'shape',
+      )
+      if (!selected) return { activeShapeStyle: nextStyle }
+      return {
+        activeShapeStyle: nextStyle,
+        objects: state.objects.map((obj) =>
+          obj.id === selected.id ? ({ ...obj, ...changes } as EditObject) : obj,
+        ),
+        history: [...state.history, state.objects],
+      }
+    }),
   addObject: (object) =>
     set((state) => {
       const { objects, history } = pruneEmptySelectedText(state, object.id)

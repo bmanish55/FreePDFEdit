@@ -1,9 +1,10 @@
-import { useRef, type ChangeEvent } from 'react'
+import { useRef, type ChangeEvent, type ReactNode } from 'react'
 import {
   Check,
   Eraser,
   Highlighter,
   ImagePlus,
+  MessageSquarePlus,
   MousePointer2,
   Pencil,
   Trash2,
@@ -13,8 +14,17 @@ import {
   ZoomOut,
 } from 'lucide-react'
 import { useMobileStore } from '../../store/useMobileStore'
-import { usePdfStore, type ActiveTool } from '../../store/usePdfStore'
+import {
+  usePdfStore,
+  type ActiveTool,
+  type AnnotationObject,
+  type ShapeObject,
+  type TextObject,
+} from '../../store/usePdfStore'
 import Button from '../ui/Button'
+import ShapeIconSvg from '../ui/ShapeIconSvg'
+import AnnotateStyleBar from '../AnnotateStyleBar'
+import ShapeStyleBar from '../ShapeStyleBar'
 import { createMobileImageObject } from './mobileImageHelper'
 
 type MobileBottomBarProps = {
@@ -33,12 +43,39 @@ export default function MobileBottomBar({ onFitWidth }: MobileBottomBarProps) {
   const setZoom = usePdfStore((state) => state.setZoom)
   const activeTool = usePdfStore((state) => state.activeTool)
   const setActiveTool = usePdfStore((state) => state.setActiveTool)
+  const activeShapeKind = usePdfStore((state) => state.activeShapeKind)
   const visiblePage = usePdfStore((state) => state.visiblePage)
   const addObject = usePdfStore((state) => state.addObject)
   const undo = usePdfStore((state) => state.undo)
   const deleteSelected = usePdfStore((state) => state.deleteSelected)
   const selectedId = usePdfStore((state) => state.selectedId)
+  const selectObject = usePdfStore((state) => state.selectObject)
+  const objects = usePdfStore((state) => state.objects)
   const historyLength = usePdfStore((state) => state.history.length)
+  const editingTextId = useMobileStore((state) => state.editingTextId)
+
+  const selectedTextObject = objects.find(
+    (obj): obj is TextObject => obj.id === selectedId && obj.type === 'text',
+  )
+  const selectedAnnotationObject = objects.find(
+    (obj): obj is AnnotationObject =>
+      obj.id === selectedId && obj.type === 'annotation',
+  )
+  const selectedShapeObject = objects.find(
+    (obj): obj is ShapeObject => obj.id === selectedId && obj.type === 'shape',
+  )
+
+  const showAnnotateBar =
+    mode === 'edit' &&
+    !editingTextId &&
+    (Boolean(selectedAnnotationObject) ||
+      (activeTool === 'annotate' && !selectedTextObject && !selectedShapeObject))
+
+  const showShapeBar =
+    mode === 'edit' &&
+    !editingTextId &&
+    (Boolean(selectedShapeObject) ||
+      (activeTool === 'shape' && !selectedTextObject && !selectedAnnotationObject))
 
   const handleImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -75,16 +112,70 @@ export default function MobileBottomBar({ onFitWidth }: MobileBottomBarProps) {
     } else if (tool === 'highlight') {
       setActiveTool('highlight')
       showHint('Tap to place a highlight, then drag to move or resize')
+    } else if (tool === 'annotate') {
+      setActiveTool('annotate')
+      if (!selectedAnnotationObject) {
+        selectObject(null)
+      }
+      showHint('Pick an icon above, then tap the page to annotate')
+    } else if (tool === 'shape') {
+      setActiveTool('shape')
+      if (!selectedShapeObject) {
+        selectObject(null)
+      }
+      showHint('Pick a shape above, then tap or drag on the page')
     }
   }
 
-  const toolItems = [
-    { id: 'select', label: 'Select', icon: MousePointer2, active: activeTool === 'select' },
-    { id: 'addText', label: 'Text', icon: Type, active: activeTool === 'addText' },
-    { id: 'addImage', label: 'Image', icon: ImagePlus, active: activeTool === 'addImage' },
-    { id: 'whiteout', label: 'Whiteout', icon: Eraser, active: activeTool === 'whiteout' },
-    { id: 'highlight', label: 'Highlight', icon: Highlighter, active: activeTool === 'highlight' },
-  ] as const
+  const toolItems: Array<{
+    id: ActiveTool
+    label: string
+    icon: ReactNode
+    active: boolean
+  }> = [
+    {
+      id: 'select',
+      label: 'Select',
+      icon: <MousePointer2 size={20} strokeWidth={2} />,
+      active: activeTool === 'select',
+    },
+    {
+      id: 'addText',
+      label: 'Text',
+      icon: <Type size={20} strokeWidth={2} />,
+      active: activeTool === 'addText',
+    },
+    {
+      id: 'addImage',
+      label: 'Image',
+      icon: <ImagePlus size={20} strokeWidth={2} />,
+      active: activeTool === 'addImage',
+    },
+    {
+      id: 'whiteout',
+      label: 'Whiteout',
+      icon: <Eraser size={20} strokeWidth={2} />,
+      active: activeTool === 'whiteout',
+    },
+    {
+      id: 'highlight',
+      label: 'Highlight',
+      icon: <Highlighter size={20} strokeWidth={2} />,
+      active: activeTool === 'highlight',
+    },
+    {
+      id: 'annotate',
+      label: 'Annotate',
+      icon: <MessageSquarePlus size={20} strokeWidth={2} />,
+      active: activeTool === 'annotate',
+    },
+    {
+      id: 'shape',
+      label: 'Shapes',
+      icon: <ShapeIconSvg kind={activeShapeKind} size={20} />,
+      active: activeTool === 'shape',
+    },
+  ]
 
   return (
     <nav
@@ -92,6 +183,16 @@ export default function MobileBottomBar({ onFitWidth }: MobileBottomBarProps) {
       className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
+      {showAnnotateBar && (
+        <div className="border-b border-slate-200 bg-slate-50">
+          <AnnotateStyleBar compact />
+        </div>
+      )}
+      {showShapeBar && (
+        <div className="border-b border-slate-200 bg-slate-50">
+          <ShapeStyleBar compact showShapePicker />
+        </div>
+      )}
       <input
         ref={fileInputRef}
         type="file"
@@ -162,26 +263,23 @@ export default function MobileBottomBar({ onFitWidth }: MobileBottomBarProps) {
 
           <div className="mx-1 h-7 w-px shrink-0 bg-slate-200" />
 
-          {toolItems.map((item) => {
-            const Icon = item.icon
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => handleSelectTool(item.id)}
-                aria-label={item.label}
-                title={item.label}
-                className={`flex h-14 w-14 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
-                  item.active
-                    ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-200'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <Icon size={20} strokeWidth={2} />
-                <span className="text-[11px] font-medium leading-none">{item.label}</span>
-              </button>
-            )
-          })}
+          {toolItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => handleSelectTool(item.id)}
+              aria-label={item.label}
+              title={item.label}
+              className={`flex h-14 w-14 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
+                item.active
+                  ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-200'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              {item.icon}
+              <span className="text-[11px] font-medium leading-none">{item.label}</span>
+            </button>
+          ))}
 
           <button
             type="button"

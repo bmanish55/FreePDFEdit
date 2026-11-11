@@ -65,18 +65,21 @@ export default function LandingView({
             )}
             {pendingDraft && onRestoreDraft && onDiscardDraft && (
               <div className="mb-4 flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-brand-200 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-start gap-3">
+                <div className="flex min-w-0 flex-1 items-start gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
                     <History size={18} strokeWidth={2} />
                   </div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-slate-900">Unsaved PDF session found</p>
-                    <p className="truncate text-xs text-slate-500" title={pendingDraft.fileName}>
-                      {pendingDraft.fileName} · {pendingDraft.objects.length} edit{pendingDraft.objects.length === 1 ? '' : 's'}
+                    <p className="flex items-center gap-1 text-xs text-slate-500" title={pendingDraft.fileName}>
+                      <span className="truncate">{pendingDraft.fileName}</span>
+                      <span className="shrink-0">
+                        · {pendingDraft.objects.length} edit{pendingDraft.objects.length === 1 ? '' : 's'}
+                      </span>
                     </p>
                   </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex shrink-0 items-center justify-end gap-2">
                   <Button variant="ghost" size="sm" onClick={onDiscardDraft} disabled={isLoading}>
                     Discard
                   </Button>
