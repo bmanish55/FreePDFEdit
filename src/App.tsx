@@ -3,6 +3,8 @@ import * as pdfjsLib from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { AlertTriangle, Sparkles } from 'lucide-react'
 import AdSlot from './components/AdSlot'
+import BuyMeCoffeeModal from './components/BuyMeCoffeeModal'
+import CoffeeBanner from './components/CoffeeBanner'
 import DesktopNotice from './components/DesktopNotice'
 import FeedbackModal from './components/FeedbackModal'
 import Footer from './components/Footer'
@@ -106,7 +108,7 @@ export default function App() {
     }
   }
 
-  const handleDownload = async () => {
+  const performDownload = async () => {
     if (!pdfBytes) return
     try {
       setError('')
@@ -116,6 +118,15 @@ export default function App() {
       const msg = err instanceof Error ? err.message : 'Some characters could not be encoded. Please remove unsupported symbols.'
       setError(msg)
     }
+  }
+
+  const handleDownload = async () => {
+    if (!pdfBytes) return
+    if (!usePdfStore.getState().hasSeenCoffeePrompt) {
+      usePdfStore.getState().openCoffeeModal('download')
+      return
+    }
+    await performDownload()
   }
 
   const handleRestoreDraft = async () => {
@@ -179,6 +190,7 @@ export default function App() {
           isOpen={isFeedbackModalOpen}
           onClose={() => setFeedbackModalOpen(false)}
         />
+        <BuyMeCoffeeModal onProceedDownload={performDownload} />
         <RefreshConfirmModal
           isOpen={isRefreshModalOpen}
           onCancel={closeRefreshModal}
@@ -300,6 +312,7 @@ export default function App() {
         currentRoute={route}
         onNavigate={navigate}
       />
+      <CoffeeBanner />
       <main className="flex-1">{renderPageContent()}</main>
       <Footer currentRoute={route} onNavigate={navigate} />
 
@@ -308,6 +321,7 @@ export default function App() {
         isOpen={isFeedbackModalOpen}
         onClose={() => setFeedbackModalOpen(false)}
       />
+      <BuyMeCoffeeModal onProceedDownload={performDownload} />
       <RefreshConfirmModal
         isOpen={isRefreshModalOpen}
         onCancel={closeRefreshModal}

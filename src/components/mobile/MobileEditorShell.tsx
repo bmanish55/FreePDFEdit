@@ -4,6 +4,7 @@ import { AlertTriangle } from 'lucide-react'
 import { useMobileStore } from '../../store/useMobileStore'
 import { usePdfStore } from '../../store/usePdfStore'
 import AdSlot from '../AdSlot'
+import CoffeeBanner from '../CoffeeBanner'
 import DesktopNotice from '../DesktopNotice'
 import Header from '../Header'
 import PdfPage from '../PdfPage'
@@ -91,6 +92,8 @@ export default function MobileEditorShell({
       <Header onDownload={onDownload} hasPdf />
 
       <main className="flex flex-1 flex-col">
+        <CoffeeBanner compact />
+
         <div className="px-4 pt-4">
           <AdSlot position="top" />
         </div>

@@ -1,5 +1,9 @@
 ﻿import { create } from 'zustand'
 import type { FontFamilyKey } from '../lib/fonts/fontMatcher'
+import {
+  hasHandledCoffeeSession,
+  markCoffeeSessionHandled,
+} from '../lib/coffee/coffeeService'
 import type { TextRun } from '../lib/text/extractText'
 import {
   buildMergedTextObject,
@@ -215,6 +219,13 @@ function pruneEmptySelectedText(
   return { objects: cleanedObjects, history: nextHistory }
 }
 
+export type CoffeeBanner = {
+  kind: 'declined' | 'supported'
+  supporterName?: string
+  amount?: number
+  emailSent?: boolean
+} | null
+
 type PdfState = {
   pdfBytes: Uint8Array | null
   fileName: string
@@ -238,6 +249,14 @@ type PdfState = {
   setAiModalOpen: (open: boolean) => void
   isFeedbackModalOpen: boolean
   setFeedbackModalOpen: (open: boolean) => void
+  isCoffeeModalOpen: boolean
+  coffeeSource: 'download' | 'footer'
+  coffeeBanner: CoffeeBanner
+  hasSeenCoffeePrompt: boolean
+  openCoffeeModal: (source: 'download' | 'footer') => void
+  closeCoffeeModal: () => void
+  markCoffeePromptHandled: () => void
+  setCoffeeBanner: (banner: CoffeeBanner) => void
   setPdf: (pdfBytes: Uint8Array, fileName: string, numPages: number) => void
   restoreSession: (pdfBytes: Uint8Array, fileName: string, numPages: number, objects: EditObject[]) => void
   setZoom: (zoom: number) => void
@@ -317,6 +336,18 @@ export const usePdfStore = create<PdfState>((set) => ({
   setAiModalOpen: (isAiModalOpen) => set({ isAiModalOpen }),
   isFeedbackModalOpen: false,
   setFeedbackModalOpen: (isFeedbackModalOpen) => set({ isFeedbackModalOpen }),
+  isCoffeeModalOpen: false,
+  coffeeSource: 'download',
+  coffeeBanner: null,
+  hasSeenCoffeePrompt: hasHandledCoffeeSession(),
+  openCoffeeModal: (coffeeSource) =>
+    set({ isCoffeeModalOpen: true, coffeeSource }),
+  closeCoffeeModal: () => set({ isCoffeeModalOpen: false }),
+  markCoffeePromptHandled: () => {
+    markCoffeeSessionHandled()
+    set({ hasSeenCoffeePrompt: true })
+  },
+  setCoffeeBanner: (coffeeBanner) => set({ coffeeBanner }),
   setPdf: (pdfBytes, fileName, numPages) =>
     set({
       pdfBytes,

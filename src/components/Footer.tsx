@@ -1,5 +1,7 @@
 import type { MouseEvent } from 'react'
+import { Coffee } from 'lucide-react'
 import type { AppRoute } from '../lib/siteConfig'
+import { usePdfStore } from '../store/usePdfStore'
 
 type FooterProps = {
   currentRoute?: AppRoute
@@ -16,6 +18,7 @@ const FOOTER_LINKS: Array<{ route: AppRoute; label: string }> = [
 
 export default function Footer({ currentRoute = '/', onNavigate }: FooterProps) {
   const currentYear = new Date().getFullYear()
+  const openCoffeeModal = usePdfStore((state) => state.openCoffeeModal)
 
   const handleLinkClick = (route: AppRoute) => (event: MouseEvent<HTMLAnchorElement>) => {
     if (!onNavigate || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
@@ -50,6 +53,14 @@ export default function Footer({ currentRoute = '/', onNavigate }: FooterProps) 
               </a>
             )
           })}
+          <button
+            type="button"
+            onClick={() => openCoffeeModal('footer')}
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+          >
+            <Coffee size={13} strokeWidth={2} className="text-amber-600" />
+            <span>Buy me a coffee</span>
+          </button>
         </nav>
       </div>
     </footer>

@@ -3,6 +3,14 @@ export const SITE_URL = (
   import.meta.env.VITE_SITE_URL || 'https://freepdfediting.netlify.app'
 ).replace(/\/+$/, '')
 
+export const CREATOR_PROFILE = {
+  name: 'Manish Bhavar',
+  role: 'MCA Graduate & Indie Developer',
+  githubUrl: 'https://github.com/bmanish55',
+  linkedinUrl: 'https://www.linkedin.com/in/manishbhavar/',
+  portfolioUrl: 'https://manishbhavar.in/',
+} as const
+
 export type AppRoute = '/' | '/about' | '/privacy-policy' | '/terms' | '/contact'
 
 type RouteMeta = {
