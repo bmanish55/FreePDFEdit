@@ -1,0 +1,6 @@
+"$schema" = "https://open-api.netlify.com/netlify.schema.json"
+
+[build.environment]
+  # Public display-name env vars intentionally match text in the UI, metadata, and build output.
+  # Real secrets (GMAIL_USER, GMAIL_APP_PASSWORD, UPI_VPA) remain protected by Netlify secrets scanning.
+  SECRETS_SCAN_OMIT_KEYS = "GMAIL_FROM_NAME,UPI_PAYEE_NAME"
